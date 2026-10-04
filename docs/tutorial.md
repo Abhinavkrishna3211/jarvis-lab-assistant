@@ -12,7 +12,8 @@ Numbers quoted here come from [measurements.md](measurements.md).
 |---|---|---|
 | Arduino UNO Q (2 GB is enough) | Runs everything: Linux for speech and the model, STM32 for the hardware | ✅ |
 | Powered USB-C hub with USB-A ports | The UNO Q has one USB-C port; mic, speaker and power share it | to buy |
-| USB microphone + USB speaker (or a USB sound card) | Voice in and out | to buy |
+| USB microphone (a USB webcam's mic works) | Voice in | ✅ Arducam camera mic |
+| Speaker: USB, or a Bluetooth speaker (see Step 5) | Voice out | ✅ Bluetooth |
 | SG90 servos × 2 (pan, tilt) | Aim the laser | 1 of 2 |
 | Laser diode module, **1 mW or less**, plus a logic-level MOSFET (IRLZ44N) | Marks the hook on the tool wall | MOSFET ✅, laser to buy |
 | WS2812 LED strip | One LED under each component box | to buy |
@@ -89,9 +90,18 @@ The firmware compiles as-is for the UNO Q: 12% of flash, 15% of RAM. App Lab fla
 Plug in the USB mic first: App Lab refuses to start the app without one
 ("No Microphone Device Found"), because the wake-word brick needs it. Press **Run** in App Lab. On the first start, the app downloads the whisper tiny.en (75 MB) and Piper
 voice (61 MB) models into the app's `data/` folder. That took 144 s on our Wi-Fi. After that, everything
-works offline. The app starts on our board (tested without the wake-word brick, since our bench has no mic yet).
+works offline. The app starts on our board with the camera mic and the wake-word brick.
 The status ring shows one solid colour per state: dim blue idle, bright blue listening, amber thinking,
 white speaking, red error. It isn't animated, because constant redraws blocked the Bridge.
+
+Speak from arm's length: right next to the mic the input clips and whisper repeats words.
+
+**Bluetooth speaker (optional).** Pair it once on the board (`bluetoothctl`: `power on`, `scan on`,
+`pair <MAC>`, `trust <MAC>`, `connect <MAC>`). On a headless board, WirePlumber needs
+`monitor.bluez.seat-monitoring = disabled` in `~/.config/wireplumber/wireplumber.conf.d/80-bluez-headless.conf`;
+if the login screen's audio session still holds Bluetooth, disable bluez there too (needs root). The app finds the
+Bluetooth sink by itself when no USB speaker is plugged in. Bluetooth shares the radio with 2.4 GHz Wi-Fi, so we
+also ran `nmcli connection modify <wifi> connection.autoconnect-retries 0` so the board keeps reconnecting.
 
 - Dashboard: `http://<board-ip>:7000`. Stock, open loans, tap-to-confirm, a text box, and a Talk button.
 - Wake word: say **"Hey Arduino"** (App Lab's built-in model) until you train "Hey Jarvis" (Step 7).
@@ -100,9 +110,11 @@ white speaking, red error. It isn't animated, because constant redraws blocked t
 
 ```
 You:    Hey Arduino
-JARVIS: Good evening, sir. What do you need?
-You:    Where's the wire stripper?
-JARVIS: Marked. Do return the wire stripper to the same hook, sir.     (laser on the hook, off after 10 s)
+JARVIS: Good afternoon, sir. How may I help?
+You:    Where is the multimeter?
+JARVIS: The multimeter is on hook 3, sir. I've highlighted it for you. Anything else?   (laser, off after 10 s)
+You:    No, thank you.
+JARVIS: Very well, sir. I'll be here if you need me.
 
 You:    Hey Arduino
 JARVIS: Good evening, sir. The lab is at your disposal.

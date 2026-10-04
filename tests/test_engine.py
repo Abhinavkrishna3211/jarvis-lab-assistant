@@ -160,6 +160,16 @@ def test_who_has(con):
     assert "Meera" in e.handle("Who has the multimeter")
 
 
+def test_small_talk_is_answered_in_code(con):
+    e, hw = make(con, {"thanks where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}})
+    e.handle("Thank you.");            assert e.last_intent == "THANKS"
+    e.handle("No, that's all.");       assert e.last_intent == "BYE"
+    assert "JARVIS" in e.handle("Who are you?")
+    assert hw.calls == []
+    e.handle("thanks where is the multimeter")  # long enough to be a request, not small talk
+    assert e.last_intent == "FIND_TOOL"
+
+
 def test_wake_greeting_matches_time_of_day(con):
     e, hw = make(con, {})
     assert "Good morning" in e.greet(hour=8)

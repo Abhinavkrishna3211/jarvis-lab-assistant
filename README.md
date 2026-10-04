@@ -57,7 +57,7 @@ JARVIS is a standard Arduino App Lab app. Full step-by-step instructions, includ
    `arduino-app-cli app import jarvis.zip`.)
 3. Open the app. In the **Large Language Model** brick, make sure **Gemma 3 1B** is selected and
    downloaded (722 MB).
-4. Plug a USB mic and speaker into a powered USB-C hub, then press **Run**. The first start downloads
+4. Plug a USB mic (and a USB speaker, or pair a Bluetooth one: see the tutorial) into a powered USB-C hub, then press **Run**. The first start downloads
    the whisper and Piper models (136 MB). After that it runs offline.
 5. Say **"Hey Arduino"**. This is App Lab's built-in wake word, used until a custom "Hey Jarvis" model is trained.
    The dashboard is at `http://<board-ip>:7000`.

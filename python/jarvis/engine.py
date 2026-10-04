@@ -11,6 +11,14 @@ from .validate import Invalid, validate
 
 YES = re.compile(r"^\s*(yes|yeah|yep|confirm|confirmed|go ahead|do it|log it|please do|affirmative)\b", re.I)
 NO = re.compile(r"^\s*(no|nope|cancel|stop|never ?mind|negative|don't)\b", re.I)
+# Small talk, answered in code before any parsing. Only short phrases (<= 6 words), so
+# "thanks, where's the multimeter" still goes to the parser. BYE before THANKS: "no thanks" ends.
+CHAT = [(re.compile(r"^\s*(no|nope|nothing|that's all|that is all|i'm good|i am good|all good|bye|goodbye)\b", re.I),
+         "BYE", "goodbye"),
+        (re.compile(r"^\W*(thank you|thanks|cheers)( (so much|very much|jarvis|sir))?\W*$", re.I), "THANKS", "thanks"),
+        (re.compile(r"\b(who are you|what are you|your name)\b", re.I), "CHAT", "whoami"),
+        (re.compile(r"\bhow are you\b", re.I), "CHAT", "how"),
+        (re.compile(r"^\s*(what can you do|help)\W*$", re.I), "CHAT", "help")]
 
 
 class Engine:
@@ -18,6 +26,7 @@ class Engine:
         self.con, self.llm, self.hw = con, llm, hw
         self._today, self.coordinator = today, coordinator
         self.pending = None
+        self.last_intent = None  # main.py ends the conversation on THANKS / BYE
         self.lock = threading.Lock()  # voice loop and dashboard both call in
         import random
         self.rng = rng or random.Random()
@@ -43,7 +52,20 @@ class Engine:
     def _handle(self, transcript):
         transcript = transcript.strip()
         if self.pending:
+            self.last_intent = "CONFIRM"
             return self._confirm(transcript)
+        intent, reply = "UNKNOWN", None
+        for rx, chat_intent, key in CHAT:
+            if len(transcript.split()) <= 6 and rx.search(transcript):
+                intent, reply = chat_intent, self._say(key)
+                break
+        else:
+            intent, reply = self._parse_and_act(transcript)
+        self.last_intent = intent
+        db.log_event(self.con, transcript, intent, reply, datetime.now().isoformat(timespec="seconds"))
+        return reply
+
+    def _parse_and_act(self, transcript):
         intent, reply = "UNKNOWN", None
         try:
             action = self.llm.parse(transcript, candidates(transcript, db.all_items(self.con)))
@@ -60,8 +82,7 @@ class Engine:
         except Exception:  # model server down, bad JSON, bridge error: never crash the lab
             reply = self._say("error")
             self.hw.ring_state("error")
-        db.log_event(self.con, transcript, intent, reply, datetime.now().isoformat(timespec="seconds"))
-        return reply
+        return intent, reply
 
     # ------------------------------------------------------------ dispatch
     def _dispatch(self, a):

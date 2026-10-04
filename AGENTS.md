@@ -20,12 +20,13 @@ JARVIS is an offline voice assistant on an Arduino UNO Q for an IoT-club lab (DE
 
 ## Status
 Done and tested off-board: matcher, validator, dates, SQLite loans, persona, engine, dashboard, hybrid parser
-(keyword rules first, Gemma only when they give up on a known item), 25 tests, 60-command evaluation set
+(keyword rules first, Gemma only when they give up on a known item), 26 tests, follow-up questions and small talk, 60-command evaluation set
 (keyword baseline 41/60, hybrid 45/60 on the board).
 Done on the UNO Q 2GB (bench, no peripherals): app import and start as `JARVIS`, Gemma 3 1B installed and served
 by the App Lab runner (about 28 s per request), typed Gemma evaluation, sketch compiled (library versions pinned in `sketch/sketch.yaml`) and flashed, all four
 Bridge calls answered (about 7 ms). See `docs/measurements.md`.
-Not yet run on real parts: servos, laser off-timer with a real laser, LED strip, ring, mic, speaker, wake word.
+Spoken on the board: camera mic + Bluetooth speaker, wake word, full conversations (docs/measurements.md §9-10).
+Not yet run on real parts: servos, laser off-timer with a real laser, LED strip, ring.
 
 ## Remaining work, in order
 1. Wire the servos, laser, strip and ring; verify the laser auto-off with a real laser; measure pointing error.

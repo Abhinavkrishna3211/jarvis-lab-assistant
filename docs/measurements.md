@@ -272,6 +272,62 @@ right after every flash, with or without the fix; that's harmless noise while th
 **Not verified yet:** that the laser actually switches off after 10 s and that the servos reach their
 angles. Both need the parts on the bench.
 
+## 9. First real spoken commands, full app running (4 Oct 2026)
+
+**How:** the full app as App Lab runs it, all three bricks (Gemma, dashboard, wake word). **Spoken by a
+person**, about 1 m from the Arducam B0490 USB camera, using its built-in microphone (the camera reports a
+"Microphone" input; the BOYA BY-M1 lapel mic's jack-to-USB adapter failed to enumerate on the hub). No speaker
+attached, so the replies were read from the app log. Mic gain at 100%.
+
+| Try | Wake word | Whisper heard | Result |
+|---|---|---|---|
+| 1 | detected | "Hey, I already know. Hey, I already know. Hey, I already know." | "didn't catch that" |
+| 2 | detected | "Hey Aradino, hey Aradino." | Gemma (48.9 s): "6 Arduino Uno available" |
+| 3 | detected | (empty, three times) | asked to repeat |
+| 4 | detected | **"Where is the wise triple?"** (peak level 31,810 of 32,767) | **Gemma (40.8 s): "Marked. Do return the wire stripper to the same hook, sir."** ✅ |
+
+Timings in try 4: greeting synthesis 2.3 s, whisper 1.85 s, Gemma 40.8 s.
+
+**What we learned:**
+- **The wake word works with the camera mic.** It triggered on all four tries; we didn't count misses or false wakes.
+- **Without a speaker, people don't know when to talk.** In tries 1–3 the speaker kept repeating the wake
+  word or spoke before recording began. A speaker, or the status ring, is needed for real use.
+- **The wake word itself gets transcribed and matched.** "Hey Aradino" is close to the Arduino Uno's alias
+  "arduino", so it went to Gemma and lit a box. Training "Hey Jarvis" removes the clash.
+- **The hybrid did its job on try 4.** Whisper turned "wire stripper" into "wise triple", the keyword rules
+  gave up, and Gemma recovered the right tool.
+- **Gemma is slower with everything running:** 40.8 and 48.9 s here vs 24–34 s in sections 5 and 7, now that the
+  wake-word runner shares the CPU and memory. Two samples only.
+- The mic is close to clipping at 100% gain with a person at 1 m; we'll lower it if clipping shows up.
+
+## 10. Spoken conversations with a Bluetooth speaker (4 Oct 2026)
+
+**How:** full app, all three bricks. **Spoken by a person** into the Arducam camera mic (gain 256 of 256).
+Replies played on a UBON MINI STAR SP 25 Bluetooth speaker. Timings from the app log.
+
+| Time | Distance | Mic peak | Whisper heard | Whisper | Engine | Reply synth |
+|---|---|---|---|---|---|---|
+| 12:15 | close | 32,767 (clipped) | "Where is the micimeter?" repeated | 3.94 s | 1.61 s | 1.96 s |
+| 13:03 | close | 32,767 (clipped) | repeated phrase | 3.96 s | 2.08 s | n/a |
+| 13:05 | arm's length | 17,244 | "Where is the multimeter?" | 1.69 s | 0.31 s | 2.30 s |
+| later | arm's length | 20,473 | "where is the multimeter?" | 1.72 s | 0.30 s | 3.48 s |
+|  | (follow-up) | 29,408 | "No, thank you." | 1.66 s | 0.01 s | 1.60 s |
+
+The last two rows are one conversation: "Good afternoon, sir. How may I help?" → "The multimeter is on hook 3,
+sir. I've highlighted it for you. Anything else?" → "No, thank you." → "Very well, sir. I'll be here if you
+need me." The keyword rules handled both turns; Gemma wasn't needed.
+
+**What we learned:**
+- **Distance matters more than gain.** Close to the mic the input clips and whisper repeats phrases (3.9 s
+  instead of 1.7 s). At arm's length transcripts were exact.
+- **About 4 s from end of speech to the reply starting** (5 s recording window not counted), plus Bluetooth delay.
+- **Bluetooth works but costs effort:** App Lab's Speaker doesn't pick a Bluetooth sink on its own (we pass the
+  PipeWire node), `play_pcm` returns about 0.2 s before the sound ends, and the login screen's audio session
+  grabbed Bluetooth until we disabled it there (needs root).
+- **Bluetooth hurts Wi-Fi on this board** (shared 2.4 GHz radio): ping 115–167 ms and one full drop that needed a
+  power cycle. We set NetworkManager to retry forever.
+- Voice: Piper `en_GB-northern_english_male-medium` at normal speed, picked by ear over `alan` and `semaine`.
+
 ## Still to measure
 - A fresh set of commands to test the hybrid rule fairly (section 7).
 - Spoken commands from real people (needs a USB mic), wake word false wakes per hour and misses
