@@ -1,0 +1,37 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>JARVIS Lab</title>
+<style>
+:root{--bg:#0b1220;--fg:#e6edf7;--mut:#8aa0bd;--ac:#4cc3ff;--bad:#ff6b6b;--card:#121c30}
+body{margin:0;font:16px system-ui;background:var(--bg);color:var(--fg);padding:16px}
+h1{font-size:20px;margin:0 0 12px;color:var(--ac)} h2{font-size:14px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr))}
+.card{background:var(--card);border-radius:10px;padding:12px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse} td,th{padding:6px 4px;text-align:left;border-bottom:1px solid #1f2d48}
+.late{color:var(--bad)} .low{color:#ffc857}
+button{background:var(--ac);border:0;border-radius:6px;padding:10px 16px;font-weight:600;font-size:16px}
+form{display:flex;gap:8px} input{flex:1;min-width:0;padding:10px;border-radius:6px;border:0;font-size:16px}
+#pending{display:none} #say{color:var(--mut);min-height:1.4em}
+</style>
+<h1>JARVIS &middot; IoT Club Lab</h1>
+<div class=card id=pending><b id=ptext></b><p><button onclick="conf(1)">Yes, log it</button> <button onclick="conf(0)">Cancel</button></p></div>
+<div class=card>
+  <form onsubmit="ask(event)"><input id=q placeholder="Type a request, e.g. where is the wire stripper" autocomplete=off><button>Ask</button></form>
+  <p><button onclick="talk()">Talk (no wake word)</button></p>
+  <p id=say></p>
+</div>
+<div class=grid>
+<div class=card><h2>Open loans</h2><table id=loans></table></div>
+<div class=card><h2>Stock</h2><table id=stock></table></div>
+</div>
+<script>
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load(){const d=await (await fetch('/api/state')).json();
+ loans.innerHTML='<tr><th>Item<th>Qty<th>Who<th>Due</tr>'+(d.loans.map(l=>`<tr class="${l.late?'late':''}"><td>${esc(l.item)}<td>${l.qty}<td>${esc(l.borrower)}<td>${l.due_date}`).join('')||'<tr><td colspan=4>Nothing out.</tr>');
+ stock.innerHTML='<tr><th>Item<th>Where<th>On shelf</tr>'+d.items.map(i=>`<tr class="${i.low?'low':''}"><td>${esc(i.name)}<td>${esc(i.location)}<td>${i.avail}`).join('');
+ pending.style.display=d.pending?'block':'none'; ptext.textContent=d.pending||''; say.textContent=d.last||''}
+async function conf(y){await fetch('/api/confirm?yes='+y,{method:'POST'});load()}
+async function ask(e){e.preventDefault();const t=q.value.trim();if(!t)return;q.value='';
+ const r=await (await fetch('/api/say?text='+encodeURIComponent(t),{method:'POST'})).json();say.textContent=r.reply;load()}
+async function talk(){say.textContent='Listening...';await fetch('/api/talk',{method:'POST'});load()}
+load();setInterval(load,3000)
+</script>

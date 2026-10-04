@@ -1,0 +1,9 @@
+name: JARVIS
+description: "Offline voice assistant for an IoT club lab: say the wake word, ask where a tool is, and a laser marks its hook. Keeps the lending log by voice."
+icon: "🤖"
+ports: [7000]
+bricks:
+  - arduino:llm:
+      model: llamacpp:gemma-3-1b-it-Q4_0
+  - arduino:web_ui
+  - arduino:keyword_spotting

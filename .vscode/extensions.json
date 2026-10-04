@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-vscode-remote.remote-ssh",
+    "ms-vscode.cpptools",
+    "github.vscode-github-actions"
+  ]
+}

@@ -1,0 +1,16 @@
+# Verified 4 Oct 2026: compiles for arduino:zephyr:unoq with exactly these versions
+# (102 KB flash, 41 KB RAM). Profiles don't resolve dependencies, so all are listed.
+profiles:
+  default:
+    platforms:
+      - platform: arduino:zephyr (1.0.0)
+    libraries:
+      - Arduino_RouterBridge (0.4.3)
+      - dependency: Arduino_RPClite (0.3.1)
+      - dependency: MsgPack (0.4.2)
+      - dependency: DebugLog (0.8.4)
+      - dependency: ArxContainer (0.7.0)
+      - dependency: ArxTypeTraits (0.3.2)
+      - Servo (1.3.0)
+      - Adafruit NeoPixel (1.15.5)
+default_profile: default

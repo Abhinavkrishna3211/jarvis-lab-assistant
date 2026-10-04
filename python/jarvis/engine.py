@@ -1,0 +1,165 @@
+"""Request pipeline: transcript -> candidates -> LLM JSON -> validation -> action -> spoken reply.
+Loans and returns always need a spoken yes (or a tap) before anything is written."""
+import re
+import threading
+from datetime import date, datetime
+
+from . import db, dialogue
+from .dates import speakable
+from .matcher import candidates
+from .validate import Invalid, validate
+
+YES = re.compile(r"^\s*(yes|yeah|yep|confirm|confirmed|go ahead|do it|log it|please do|affirmative)\b", re.I)
+NO = re.compile(r"^\s*(no|nope|cancel|stop|never ?mind|negative|don't)\b", re.I)
+
+
+class Engine:
+    def __init__(self, con, llm, hw, today=None, rng=None, coordinator="sir"):
+        self.con, self.llm, self.hw = con, llm, hw
+        self._today, self.coordinator = today, coordinator
+        self.pending = None
+        self.lock = threading.Lock()  # voice loop and dashboard both call in
+        import random
+        self.rng = rng or random.Random()
+
+    def today(self):
+        return self._today or date.today()
+
+    def _say(self, key, **kw):
+        return dialogue.say(key, self.rng, **kw)
+
+    # ------------------------------------------------------------ public
+    def greet(self, hour=None):
+        """Spoken right after the wake word."""
+        h = datetime.now().hour if hour is None else hour
+        part = "morning" if 4 <= h < 12 else "afternoon" if h < 17 else "evening"
+        return self._say("wake", part=part, name=self.coordinator)
+
+    def handle(self, transcript):
+        """Returns the reply text. Hardware side effects go through self.hw."""
+        with self.lock:
+            return self._handle(transcript)
+
+    def _handle(self, transcript):
+        transcript = transcript.strip()
+        if self.pending:
+            return self._confirm(transcript)
+        intent, reply = "UNKNOWN", None
+        try:
+            action = self.llm.parse(transcript, candidates(transcript, db.all_items(self.con)))
+            clean = validate(action, self.con, self.today())
+            intent = clean["intent"]
+            reply = self._dispatch(clean)
+        except Invalid as e:
+            if "inventory" in str(e):
+                reply = self._say("not_stocked")
+            elif "stock" in str(e):
+                reply = self._say("short_stock", item=e.item_name, have=e.have)
+            else:
+                reply = self._say("unclear")
+        except Exception:  # model server down, bad JSON, bridge error: never crash the lab
+            reply = self._say("error")
+            self.hw.ring_state("error")
+        db.log_event(self.con, transcript, intent, reply, datetime.now().isoformat(timespec="seconds"))
+        return reply
+
+    # ------------------------------------------------------------ dispatch
+    def _dispatch(self, a):
+        return getattr(self, "_" + a["intent"].lower())(a)
+
+    def _mark(self, item):
+        loc = db.location(self.con, item["location"])
+        if loc["type"] == "hook":
+            self.hw.point(loc["servo_pan"], loc["servo_tilt"])
+            self.hw.laser(True, 10)
+        else:
+            self.hw.box_led(loc["led_index"], "white")
+        return loc
+
+    def _position(self, loc):
+        return f"hook {loc['id'][1:]}" if loc["type"] == "hook" else f"box {loc['id'][1:]}"
+
+    def _find_tool(self, a):
+        item = a["item"]
+        loans = db.open_loans(self.con, item["id"])
+        if loans and db.available(self.con, item) <= 0:
+            l = loans[0]
+            return self._say("tool_loan", tool=item["name"], borrower=l["borrower"],
+                             date=speakable(l["out_date"]), due=speakable(l["due_date"]))
+        loc = self._mark(item)
+        return self._say("tool_found", tool=item["name"], position=self._position(loc))
+
+    def _tool_for_task(self, a):
+        item = a["item"]
+        if item["kind"] != "tool":
+            raise Invalid("item not a tool")
+        loc = self._mark(item)
+        return self._say("tool_task", tool=item["name"], position=self._position(loc))
+
+    def _find_component(self, a):
+        item = a["item"]
+        left = db.available(self.con, item)
+        if left <= 0:
+            return self._say("out_stock", item=item["name"])
+        loc = self._mark(item)
+        key = "low_stock" if left <= item["low_stock_at"] else "comp_found"
+        return self._say(key, item=item["name"], qty=left, box=loc["id"][1:])
+
+    _stock = _find_component
+
+    def _lend(self, a):
+        self.pending = a
+        return self._say("lend_confirm", qty=a["qty"], item=a["item"]["name"],
+                         borrower=a["borrower"], due=speakable(a["due"]))
+
+    def _return(self, a):
+        open_ = db.open_loans(self.con, a["item"]["id"], a["borrower"])
+        if not open_:
+            return self._say("no_loan", item=a["item"]["name"], borrower=a["borrower"])
+        self.pending = a
+        return self._say("return_confirm", qty=a["qty"], item=a["item"]["name"], borrower=a["borrower"])
+
+    def _overdue(self, a):
+        late = db.overdue(self.con, self.today())
+        if not late:
+            return self._say("no_overdue")
+        o = late[0]
+        names = ", ".join(f"{l['item']} ({l['borrower']})" for l in late[:3])
+        if len(late) == 1:
+            return self._say("overdue", n=1, item=o["item"], borrower=o["borrower"],
+                             date=speakable(o["out_date"]), list=names)
+        return f"{len(late)} items are overdue: {names}."
+
+    def _who_has(self, a):
+        loans = db.open_loans(self.con, a["item"]["id"])
+        if not loans:
+            return self._say("nobody", item=a["item"]["name"])
+        l = loans[0]
+        return self._say("who_has", borrower=l["borrower"], item=a["item"]["name"],
+                         date=speakable(l["out_date"]), due=speakable(l["due_date"]))
+
+    # ------------------------------------------------------------ confirmation
+    def confirm(self, yes=True):
+        """Also called by the dashboard's tap-to-confirm buttons."""
+        with self.lock:
+            return self._confirm("yes" if yes else "no") if self.pending else ""
+
+    def _confirm(self, transcript):
+        a = self.pending
+        if YES.match(transcript):
+            self.pending = None
+            item = a["item"]
+            if a["intent"] == "LEND":
+                try:
+                    db.lend(self.con, item, a["qty"], a["borrower"], a["due"], self.today())
+                except ValueError:
+                    return self._say("out_stock", item=item["name"])
+                return self._say("lend_saved", qty=a["qty"], item=item["name"], borrower=a["borrower"])
+            got = db.give_back(self.con, item, a["borrower"], a["qty"], self.today())
+            fresh = db.get_item(self.con, item["name"])
+            return self._say("return_saved", qty=got, item=item["name"], borrower=a["borrower"],
+                             total=db.available(self.con, fresh))
+        if NO.match(transcript):
+            self.pending = None
+            return self._say("cancelled")
+        return "Shall I log it? Yes or no, please."

@@ -1,0 +1,2 @@
+pywhispercpp==1.5.1
+piper-tts==1.8.0

@@ -1,0 +1,9 @@
+{
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests"],
+  "python.analysis.extraPaths": ["."],
+  "files.eol": "\n",
+  "files.associations": { "*.ino": "cpp" },
+  "editor.formatOnSave": false,
+  "files.exclude": { "**/__pycache__": true, "**/.pytest_cache": true }
+}

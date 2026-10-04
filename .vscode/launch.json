@@ -1,0 +1,9 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "JARVIS simulator", "type": "debugpy", "request": "launch", "program": "python/jarvis/app.py",
+      "console": "integratedTerminal" },
+    { "name": "Evaluation", "type": "debugpy", "request": "launch", "program": "eval/run_eval.py",
+      "console": "integratedTerminal" }
+  ]
+}
