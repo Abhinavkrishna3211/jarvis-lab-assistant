@@ -209,3 +209,39 @@ def test_recording_stops_after_speech_then_quiet():
     assert len(until_quiet(iter(talk))) == (4 + 12 + 7) * 2000   # stops 0.875 s after speech ends
     assert len(until_quiet(iter([chunk(1000)] * 80))) == 32 * 2000  # nobody spoke: give up at 4 s
     assert len(until_quiet(iter([chunk(6000)] * 80))) == 48 * 2000  # never stops talking: 6 s cap
+
+
+def test_camera_finder_moved_missing_and_fallback(con):
+    t = {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}}  # home: hook 3, pan 84
+    e, hw = make(con, t)
+    e.rng = type("First", (), {"choice": staticmethod(lambda lines: lines[0])})()  # first line of each set
+    e.finder = lambda name: 85                     # seen on its own hook
+    assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 85, 75)
+    e.finder = lambda name: 107                    # hung near hook 6 (pan 108) instead
+    assert "hook 6" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 107, 75)
+    hw.calls.clear()
+    e.finder = lambda name: None                   # not on the wall, not on loan
+    reply = e.handle("Where is the multimeter?")
+    assert "on the wall" in reply and "borrowed" in reply or "signed it out" in reply
+    assert hw.calls == []                          # never fire the laser at nothing
+    def broken(name): raise OSError("no camera")
+    e.finder = broken                              # camera unplugged: fall back to the home hook
+    assert "hook 3" in e.handle("Where is the multimeter?")
+
+
+def test_vision_locate_dot_and_calibration():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    from jarvis.vision import find_dot, fit, locate, pan_for
+    rng = np.random.default_rng(0)
+    wall = rng.integers(90, 110, (480, 640, 3), dtype=np.uint8)
+    tool = rng.integers(0, 255, (60, 40, 3), dtype=np.uint8)
+    wall[200:260, 300:340] = tool
+    x, y, score = locate(wall, tool)
+    assert abs(x - 320) <= 2 and abs(y - 230) <= 2 and score > 0.9
+    assert locate(rng.integers(90, 110, (480, 640, 3), dtype=np.uint8), tool) is None
+    on = wall.copy(); on[100, 500, 2] = 255
+    assert find_dot(wall, on) == (500, 100) and find_dot(wall, wall) is None
+    cal = fit([(100, 50), (300, 90), (500, 130)])
+    assert abs(pan_for(400, cal) - 110) < 0.01
+    assert pan_for(10_000, cal) == 130             # clamped to where the dot was seen on the wall

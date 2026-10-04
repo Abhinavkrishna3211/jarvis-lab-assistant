@@ -23,9 +23,13 @@ CHAT = [(re.compile(r"^\s*(no|nope|nothing|that's all|that is all|i'm good|i am 
         (re.compile(r"^\s*(what can you do|help)\W*$", re.I), "CHAT", "help")]
 
 
+HOOK_TOL = 4  # degrees: a tool seen within this of its hook's pan angle is on its hook
+
+
 class Engine:
-    def __init__(self, con, llm, hw, today=None, rng=None, coordinator="sir"):
+    def __init__(self, con, llm, hw, today=None, rng=None, coordinator="sir", finder=None):
         self.con, self.llm, self.hw = con, llm, hw
+        self.finder = finder  # vision.Finder: where the camera sees a tool (None = trust the home hook)
         self._today, self.coordinator = today, coordinator
         self.pending = None
         self.last_intent = None  # main.py ends the conversation on THANKS / BYE
@@ -91,13 +95,26 @@ class Engine:
         return getattr(self, "_" + a["intent"].lower())(a)
 
     def _mark(self, item):
+        """Light the box, or aim the laser at the tool. Returns the location to name in the reply
+        (the hook nearest to where the camera saw it), or None if the camera can't see it on the wall."""
         loc = db.location(self.con, item["location"])
-        if loc["type"] == "hook":
-            self.hw.point(loc["servo_pan"], loc["servo_tilt"])
-            self.hw.laser(True, 10)
-        else:
+        if loc["type"] != "hook":
             self.hw.box_led(loc["led_index"], "white")
-        return loc
+            return loc
+        pan = loc["servo_pan"]
+        if self.finder:
+            try:
+                pan = self.finder(item["name"])
+            except Exception as e:  # no camera, template or calibration yet: trust the home hook
+                print("[vision]", e)
+            if pan is None:
+                return None
+        self.hw.point(pan, loc["servo_tilt"])
+        self.hw.laser(True, 10)
+        if abs(pan - loc["servo_pan"]) <= HOOK_TOL:
+            return loc
+        hooks = self.con.execute("SELECT * FROM locations WHERE type='hook'").fetchall()
+        return dict(min(hooks, key=lambda h: abs(h["servo_pan"] - pan)), moved=True)
 
     def _position(self, loc):
         return f"hook {loc['id'][1:]}" if loc["type"] == "hook" else f"box {loc['id'][1:]}"
@@ -110,13 +127,18 @@ class Engine:
             return self._say("tool_loan", tool=item["name"], borrower=l["borrower"],
                              date=speakable(l["out_date"]), due=speakable(l["due_date"]))
         loc = self._mark(item)
-        return self._say("tool_found", tool=item["name"], position=self._position(loc))
+        if loc is None:
+            return self._say("tool_missing", tool=item["name"])
+        key = "tool_moved" if loc.get("moved") else "tool_found"
+        return self._say(key, tool=item["name"], position=self._position(loc))
 
     def _tool_for_task(self, a):
         item = a["item"]
         if item["kind"] != "tool":
             raise Invalid("item not a tool")
         loc = self._mark(item)
+        if loc is None:
+            return self._say("tool_missing", tool=item["name"])
         return self._say("tool_task", tool=item["name"], position=self._position(loc))
 
     def _find_component(self, a):

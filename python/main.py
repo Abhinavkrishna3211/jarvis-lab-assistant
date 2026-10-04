@@ -1,6 +1,7 @@
 """JARVIS on the UNO Q (App Lab entry point).
 Always listening: wake word -> greeting -> record the request -> whisper -> keyword rules, Gemma if they give up (one JSON action)
 -> validate() -> laser / box LED -> Piper reply. Loans and returns wait for a spoken yes or a tap."""
+import json
 import os
 import re
 import subprocess
@@ -15,6 +16,7 @@ from jarvis.dashboard import state
 from jarvis.engine import Engine
 from jarvis.hardware import BridgeHardware
 from jarvis.llm import HybridLLM, LlamaServerLLM
+from jarvis.vision import Finder, find_dot, fit
 
 DATA = "/app/data"
 # Label inside the keyword model. "hey_arduino" is App Lab's built-in model, so the wake flow works out
@@ -26,7 +28,8 @@ con = db.connect(f"{DATA}/jarvis.db")
 db.seed(con)
 hw = BridgeHardware()
 # Gemma only sees requests the keyword rules can't handle; it takes ~28 s here, so say so first.
-engine = Engine(con, HybridLLM(LlamaServerLLM(), on_slow=lambda: speak("One moment, sir. Running the calculations.")), hw)
+engine = Engine(con, HybridLLM(LlamaServerLLM(), on_slow=lambda: speak("One moment, sir. Running the calculations.")), hw,
+                finder=Finder(DATA, lambda: grab()))
 voice = None  # loaded in the background: first start downloads ~136 MB of speech models
 busy = threading.Lock()
 
@@ -36,6 +39,53 @@ def ring(s):
         hw.ring_state(s)
     except Exception as e:  # a missing MCU must not stop the conversation
         print("[bridge]", e)
+
+
+def frames(cam, n):
+    """n frames after the camera's exposure settles (the first few are dark)."""
+    out = []
+    while len(out) < n:
+        f = cam.capture()
+        if f is not None:
+            out.append(f)
+        time.sleep(0.05)
+    return out
+
+
+def grab():
+    from arduino.app_peripherals.camera import Camera
+    with Camera(0) as cam:
+        return frames(cam, 8)[-1]
+
+
+def calibrate(lo, hi, step=10):
+    """Sweep the pan servo across the wall, find the laser dot at each angle, fit pixel x -> pan.
+    lo..hi must only cover the tool wall: the laser is on for about half a second at each stop."""
+    import cv2
+    from arduino.app_peripherals.camera import Camera
+    samples = []
+    with Camera(0) as cam:
+        frames(cam, 8)
+        for pan in range(lo, hi + 1, step):
+            hw.point(pan, db.TILT_FIXED)
+            time.sleep(0.8)
+            off = frames(cam, 2)[-1]
+            hw.laser(True, 1)
+            time.sleep(0.3)
+            on = frames(cam, 2)[-1]
+            hw.laser(False, 0)
+            dot = find_dot(off, on)
+            print(f"[calibrate] pan={pan} dot={dot}")
+            if dot:
+                samples.append((dot[0], pan))
+                cv2.circle(on, dot, 8, (0, 255, 0), 2)
+                cv2.imwrite(f"{DATA}/cal_{pan}.jpg", on)
+    if len(samples) < 3:
+        return {"error": f"saw the dot only {len(samples)} times", "samples": samples}
+    cal = fit(samples)
+    with open(f"{DATA}/vision.json", "w") as f:
+        json.dump(cal, f)
+    return dict(cal, samples=samples)
 
 
 def open_speaker():
@@ -141,7 +191,19 @@ def api_talk():
     return {}
 
 
+def api_snap():
+    import cv2
+    cv2.imwrite(f"{DATA}/wall.jpg", grab())
+    return {"saved": f"{DATA}/wall.jpg"}
+
+
+def api_calibrate(lo: int = 40, hi: int = 140):
+    return calibrate(lo, hi)
+
+
 ui.expose_api("POST", "/api/confirm", api_confirm)
+ui.expose_api("POST", "/api/snap", api_snap)
+ui.expose_api("POST", "/api/calibrate", api_calibrate)
 ui.expose_api("POST", "/api/say", api_say)
 ui.expose_api("POST", "/api/talk", api_talk)
 
