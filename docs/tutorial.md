@@ -15,7 +15,7 @@ Numbers quoted here come from [measurements.md](measurements.md).
 | USB microphone (a USB webcam's mic works) | Voice in | ✅ Arducam camera mic |
 | Speaker: USB, or a Bluetooth speaker (see Step 5) | Voice out | ✅ Bluetooth |
 | SG90 servos × 2 (pan, tilt) | Aim the laser | 1 of 2 |
-| Laser diode module, **1 mW or less**, plus a logic-level MOSFET (IRLZ44N) | Marks the hook on the tool wall | MOSFET ✅, laser to buy |
+| Laser module from a keychain pointer (cells removed), plus a logic-level MOSFET (IRLZ44N) | Marks the hook on the tool wall | ✅ both |
 | WS2812 LED strip | One LED under each component box | to buy |
 | 16-LED NeoPixel ring | Status: idle, listening, thinking, speaking, error | ✅ |
 | Separate 5 V supply | Servos and LEDs draw too much for the board | |
@@ -79,7 +79,7 @@ Gemma when they give up on a request that mentions a known item. See
 See [wiring.md](wiring.md) for the pin table. In short: servos on D5/D6, laser through the MOSFET on D7,
 LED strip on D8, status ring on D9, all powered from a separate 5 V supply with a shared ground.
 
-**Laser safety:** use a module rated 1 mW or less. The firmware switches it off after 10 s no matter
+**Laser safety:** the keychain pointer's output power is unmeasured, so it is run current-limited (about 20 mA) and treated as a hazard to eyes. The firmware switches it off after 10 s no matter
 what Python asks for, and Python caps the request at 10 s too. Mount the turret so it can only reach
 the tool wall, never head height.
 
@@ -94,7 +94,15 @@ works offline. The app starts on our board with the camera mic and the wake-word
 The status ring shows one solid colour per state: dim blue idle, bright blue listening, amber thinking,
 white speaking, red error. It isn't animated, because constant redraws blocked the Bridge.
 
-Speak from arm's length: right next to the mic the input clips and whisper repeats words.
+Speak from arm's length: right next to the mic the input clips and whisper repeats words. JARVIS stops
+recording about 0.8 s after you stop talking (6 s at most).
+
+**Start on boot.** App Lab only restarts the default app after a power cut:
+`arduino-app-cli properties set default user:jarvis` (we hit this after a power cycle).
+
+**Mic recovery.** After a USB mic or camera is replugged, PipeWire can lose it until WirePlumber restarts.
+`tools/mic-watch.sh` checks for that and restarts WirePlumber and the app. Run it every minute from your
+crontab (`crontab -e`, add `* * * * * $HOME/ArduinoApps/jarvis/tools/mic-watch.sh`).
 
 **Bluetooth speaker (optional).** Pair it once on the board (`bluetoothctl`: `power on`, `scan on`,
 `pair <MAC>`, `trust <MAC>`, `connect <MAC>`). On a headless board, WirePlumber needs

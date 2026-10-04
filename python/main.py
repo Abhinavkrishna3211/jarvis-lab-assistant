@@ -20,7 +20,6 @@ DATA = "/app/data"
 # Label inside the keyword model. "hey_arduino" is App Lab's built-in model, so the wake flow works out
 # of the box; switch to "hey_jarvis" once the custom Edge Impulse model is installed and selected.
 WAKE_WORD = os.environ.get("JARVIS_WAKE_WORD", "hey_arduino")
-LISTEN_SECONDS = 5
 
 os.makedirs(DATA, exist_ok=True)
 con = db.connect(f"{DATA}/jarvis.db")
@@ -70,11 +69,14 @@ def speak(text):
 def listen():
     from arduino.app_peripherals.microphone import Microphone
     ring("listening")
+    from jarvis.voice import until_quiet
+    t0 = time.time()
     with Microphone(device=0) as mic:  # device 0 = shared with the wake-word brick
-        pcm = mic.record_pcm(LISTEN_SECONDS)
+        pcm = until_quiet(mic.stream(), mic.sample_rate)
+    rec = time.time() - t0
     ring("thinking")
     text, t = voice.transcribe(pcm)
-    print(f"[timing] stt={t:.2f}s peak={int(abs(pcm).max())} heard={text!r}")  # peak: 0..32767, near 0 = silence
+    print(f"[timing] rec={rec:.1f}s stt={t:.2f}s peak={int(abs(pcm).max())} heard={text!r}")  # peak: 0..32767, near 0 = silence
     return text
 
 

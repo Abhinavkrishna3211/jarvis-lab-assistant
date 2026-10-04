@@ -10,6 +10,8 @@ from .matcher import candidates
 from .validate import Invalid, validate
 
 YES = re.compile(r"^\s*(yes|yeah|yep|confirm|confirmed|go ahead|do it|log it|please do|affirmative)\b", re.I)
+# Whisper often keeps the wake word ("Hey Aradino, where is..."), and "arduino" then matches the Arduino Uno.
+WAKE = re.compile(r"^(\W*(hey|hi|hay|okay|ok)\W+(jarvis|ar\w*d\w*no)\b)+\W*", re.I)
 NO = re.compile(r"^\s*(no|nope|cancel|stop|never ?mind|negative|don't)\b", re.I)
 # Small talk, answered in code before any parsing. Only short phrases (<= 6 words), so
 # "thanks, where's the multimeter" still goes to the parser. BYE before THANKS: "no thanks" ends.
@@ -50,7 +52,7 @@ class Engine:
             return self._handle(transcript)
 
     def _handle(self, transcript):
-        transcript = transcript.strip()
+        transcript = WAKE.sub("", transcript).strip()
         if self.pending:
             self.last_intent = "CONFIRM"
             return self._confirm(transcript)

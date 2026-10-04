@@ -14,6 +14,27 @@ PIPER_VOICE = "en_GB-northern_english_male-medium"  # picked by ear over alan an
 SLOW = 1.0   # Piper length_scale: <1 brisker, >1 slower
 ECHO = 0.0   # short "voice in the walls" echo gain; above ~0.2 it starts to sound sinister
 RATE = 16000  # whisper wants 16 kHz mono
+PEAK = 24000  # output normalised to this (of 32767); 31000 sounded unclear on the Bluetooth speaker
+
+
+def until_quiet(chunks, rate=RATE, max_s=6.0, quiet_s=0.8, wait_s=4.0):
+    """Collect mic chunks until the person stops talking, instead of a fixed 5 s window.
+    Speech = chunk RMS above 2.5x the quietest chunk so far (floor ~1000 at full gain on the camera mic),
+    clamped to 1500..3000. Stops after quiet_s of quiet following speech, after wait_s if nobody spoke,
+    or at max_s."""
+    got, n, floor, spoke, quiet = [], 0, None, False, 0
+    for c in chunks:
+        got.append(c)
+        n += len(c)
+        rms = float(np.sqrt(np.mean(c.astype(np.float32) ** 2)))
+        floor = rms if floor is None else min(floor, rms)
+        if rms > min(3000.0, max(1500.0, 2.5 * floor)):
+            spoke, quiet = True, 0
+        else:
+            quiet += len(c)
+        if n >= max_s * rate or (spoke and quiet >= quiet_s * rate) or (not spoke and n >= wait_s * rate):
+            break
+    return np.concatenate(got)
 
 
 class Voice:
@@ -36,7 +57,7 @@ class Voice:
         t0 = time.time()
         audio = pcm.astype(np.float32).ravel() / 32768.0
         # audio_ctx=512 (~10 s window) instead of the default 30 s: 4.8 s -> 1.4 s on the UNO Q,
-        # same transcripts (docs/measurements.md). Recordings are 5 s, so nothing is cut off.
+        # same transcripts (docs/measurements.md). Recordings are 6 s at most, so nothing is cut off.
         text = " ".join(s.text for s in self.stt.transcribe(audio, audio_ctx=512))
         text = re.sub(r"\[[^\]]*\]|\([^)]*\)", "", text).strip()
         return text, time.time() - t0
@@ -51,5 +72,5 @@ class Voice:
         y = x.copy()
         y[d:] += ECHO * x[:-d]
         y[2 * d:] += ECHO / 2 * x[:-2 * d]
-        y *= 31000 / max(1.0, float(np.abs(y).max()))  # normalise loud: the BT speaker is quiet
+        y *= PEAK / max(1.0, float(np.abs(y).max()))  # normalise loud: the BT speaker is quiet
         return y.astype(np.int16), time.time() - t0

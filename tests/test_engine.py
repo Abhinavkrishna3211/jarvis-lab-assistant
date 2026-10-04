@@ -192,3 +192,20 @@ def test_hybrid_asks_gemma_only_when_rules_give_up_on_a_known_item(con):
     assert ask("where's the wire stripper")["intent"] == "FIND_TOOL" and not asked  # rules handle it
     assert ask("what's the weather")["intent"] == "UNKNOWN" and not asked          # small talk: no model
     assert ask("show me the tweezers")["item"] == "tweezers" and asked == [1]
+
+
+def test_wake_word_is_stripped_before_parsing(con):
+    e, hw = make(con, {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}})
+    e.handle("Hey Aradino, hey Aradino.")       # only the wake word: must not light the Arduino Uno box
+    assert e.last_intent == "UNKNOWN" and hw.calls == []
+    assert "multimeter" in e.handle("Hey Arduino, where is the multimeter?")
+
+
+def test_recording_stops_after_speech_then_quiet():
+    np = pytest.importorskip("numpy")
+    from jarvis.voice import until_quiet
+    chunk = lambda level: np.full(2000, level, dtype=np.int16)  # 125 ms at 16 kHz
+    talk = [chunk(1000)] * 4 + [chunk(6000)] * 12 + [chunk(1000)] * 40
+    assert len(until_quiet(iter(talk))) == (4 + 12 + 7) * 2000   # stops 0.875 s after speech ends
+    assert len(until_quiet(iter([chunk(1000)] * 80))) == 32 * 2000  # nobody spoke: give up at 4 s
+    assert len(until_quiet(iter([chunk(6000)] * 80))) == 48 * 2000  # never stops talking: 6 s cap

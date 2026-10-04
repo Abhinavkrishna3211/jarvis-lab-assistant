@@ -10,7 +10,7 @@ Everything runs on the board: no internet, no cloud account.
 
 ```
 mic -> "Hey Jarvis" (App Lab keyword spotting, always listening) -> "Good evening, sir."
-    -> record 5 s -> whisper.cpp tiny.en -> fuzzy candidate match (about 10 items)
+    -> record until you pause (6 s max) -> whisper.cpp tiny.en -> fuzzy candidate match (about 10 items)
     -> keyword rules; if they give up on a known item, Gemma 3 1B (App Lab llama.cpp runner,
        JSON-schema constrained) -> validator -> SQLite
     -> Piper reply and Bridge calls to the STM32: point / laser / box_led / ring_state
@@ -67,7 +67,7 @@ Hook angles and LED indexes in `python/jarvis/db.py` are placeholders until you 
 
 ## Safety and privacy
 
-- Laser: 1 mW or less, auto-off after 10 s (enforced in both Python and firmware), aimed only at the wall.
+- Laser: a small keychain red pointer module, driven well below its rated current, auto-off after 10 s (enforced in both Python and firmware), aimed only at the wall. Its optical power was not measured with an instrument, so the post reports it as an unverified low-power pointer.
 - Camera (stretch goal) faces the tool wall and boxes, never people.
 - The loan log stores first names only and never leaves the board.
 

@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS events(
 """
 
 # Placeholder calibration: replace servo angles / LED indexes after calibrating in the real lab.
-SEED_LOCATIONS = [(f"H{i}", "hook", 60 + 8 * i, 70 + (i % 3) * 6, None) for i in range(1, 9)] + \
+# Hooks sit in ONE horizontal row at the laser's height, so only the pan servo moves and the tilt
+# servo angle is a single fixed value. Calibrate TILT_FIXED and each hook's pan angle on the wall.
+TILT_FIXED = 75
+SEED_LOCATIONS = [(f"H{i}", "hook", 60 + 8 * i, TILT_FIXED, None) for i in range(1, 9)] + \
                  [(f"B{i}", "box", None, None, i - 1) for i in range(1, 9)]
 SEED_ITEMS = [
     # name, aliases, uses, kind, location, qty, low_stock_at
