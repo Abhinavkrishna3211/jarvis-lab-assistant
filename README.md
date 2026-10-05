@@ -35,6 +35,18 @@ JARVIS says "One moment, sir" before those. The numbers are in [docs/measurement
 | Dashboard | Linux | `assets/index.html`, `python/jarvis/dashboard.py` |
 | App Lab entry point | Linux | `python/main.py`, `app.yaml` |
 
+## Our Edge Impulse models
+
+We trained both of these ourselves in Edge Impulse. The projects are public:
+
+| Model | What it does | Project |
+|---|---|---|
+| Vision | Object detection on the tool wall, trained on photos of the lab's wall | [studio.edgeimpulse.com/public/1128889](https://studio.edgeimpulse.com/public/1128889/live) |
+| Keyword | The "Hey Jarvis" wake word (classes JARVIS and NOISE, about 10 ms per window), runs on the board | [studio.edgeimpulse.com/public/1128798](https://studio.edgeimpulse.com/public/1128798/live) |
+
+The keyword model is exported as a Linux AARCH64 `.eim`, copied to `/home/arduino/.arduino-bricks/ei-models/hey-jarvis.eim`
+on the board, and selected with `EI_KEYWORD_SPOTTING_MODEL` in `app.yaml`. The `.eim` files aren't committed.
+
 ## Try it without hardware
 
 ```bash
@@ -59,7 +71,8 @@ JARVIS is a standard Arduino App Lab app. Full step-by-step instructions, includ
    downloaded (722 MB).
 4. Plug a USB mic (and a USB speaker, or pair a Bluetooth one: see the tutorial) into a powered USB-C hub, then press **Run**. The first start downloads
    the whisper and Piper models (136 MB). After that it runs offline.
-5. Say **"Hey Arduino"**. This is App Lab's built-in wake word, used until a custom "Hey Jarvis" model is trained.
+5. Say **"Hey Jarvis"** (our Edge Impulse model, see above). Without the `.eim`, remove the variable in
+   `app.yaml`, set `JARVIS_WAKE_WORD=hey_arduino`, and say **"Hey Arduino"** instead.
    The dashboard is at `http://<board-ip>:7000`.
 
 Hook angles and LED indexes in `python/jarvis/db.py` are placeholders until you calibrate in the real lab
