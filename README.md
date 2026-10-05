@@ -4,8 +4,6 @@ A voice assistant for an open IoT-club lab. Ask it where a tool is and a laser m
 component and the LED under its box lights; lend and return hardware by voice and it keeps the log.
 Everything runs on the board: no internet, no cloud account.
 
-> Built for the DEV Hacktoberfest 2026 Weekend Challenge, *Build for a Friend*.
-
 ## How it works
 
 ```
