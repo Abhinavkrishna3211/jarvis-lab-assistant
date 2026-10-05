@@ -11,7 +11,7 @@ import numpy as np
 MODELS = os.environ.get("JARVIS_MODELS", "/app/data/models")
 WHISPER_MODEL = "tiny.en"
 PIPER_VOICE = "en_GB-northern_english_male-medium"  # picked by ear over alan and semaine (they sounded like a villain)
-SLOW = 1.0   # Piper length_scale: <1 brisker, >1 slower
+SLOW = 1.3   # Piper length_scale: <1 brisker, >1 slower
 ECHO = 0.0   # short "voice in the walls" echo gain; above ~0.2 it starts to sound sinister
 RATE = 16000  # whisper wants 16 kHz mono
 PEAK = 24000  # output normalised to this (of 32767); 31000 sounded unclear on the Bluetooth speaker

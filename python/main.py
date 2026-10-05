@@ -101,12 +101,15 @@ def open_speaker():
         return Speaker(device=f"pipewire:NODE={m.group(1)}", sample_rate=voice.tts_rate)
 
 
+speaking = threading.Lock()  # dashboard /api/say and the voice loop must not talk over each other
+
+
 def speak(text):
     print("JARVIS>", text)
     if voice is None:
         return
     try:
-        with open_speaker() as sp:  # open first: no speaker -> skip the ~2 s synth, mic opens at once
+        with speaking, open_speaker() as sp:  # open first: no speaker -> skip the ~2 s synth, mic opens at once
             audio, t = voice.synth(text)
             ring("speaking")
             sp.play_pcm(audio)
@@ -191,6 +194,12 @@ def api_talk():
     return {}
 
 
+def api_point(pan: int = 90):
+    """Bench test: move the pan servo only (the laser stays off)."""
+    hw.point(pan, db.TILT_FIXED)
+    return {"pan": pan}
+
+
 def api_snap():
     import cv2
     cv2.imwrite(f"{DATA}/wall.jpg", grab())
@@ -202,6 +211,7 @@ def api_calibrate(lo: int = 40, hi: int = 140):
 
 
 ui.expose_api("POST", "/api/confirm", api_confirm)
+ui.expose_api("POST", "/api/point", api_point)
 ui.expose_api("POST", "/api/snap", api_snap)
 ui.expose_api("POST", "/api/calibrate", api_calibrate)
 ui.expose_api("POST", "/api/say", api_say)
