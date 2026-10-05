@@ -1,6 +1,7 @@
 """JARVIS on the UNO Q (App Lab entry point).
 Always listening: wake word -> greeting -> record the request -> whisper -> keyword rules, Gemma if they give up (one JSON action)
 -> validate() -> laser / box LED -> Piper reply. Loans and returns wait for a spoken yes or a tap."""
+import functools
 import json
 import os
 import re
@@ -19,9 +20,8 @@ from jarvis.llm import HybridLLM, LlamaServerLLM
 from jarvis.vision import Finder, find_dot, fit
 
 DATA = "/app/data"
-# Label inside the keyword model. "hey_arduino" is App Lab's built-in model, so the wake flow works out
-# of the box; switch to "hey_jarvis" once the custom Edge Impulse model is installed and selected.
-WAKE_WORD = os.environ.get("JARVIS_WAKE_WORD", "hey_arduino")
+# Label inside the keyword model: "JARVIS" in our Edge Impulse model (app.yaml), "hey_arduino" in App Lab's built-in one.
+WAKE_WORD = os.environ.get("JARVIS_WAKE_WORD", "JARVIS")
 
 os.makedirs(DATA, exist_ok=True)
 con = db.connect(f"{DATA}/jarvis.db")
@@ -30,6 +30,7 @@ hw = BridgeHardware()
 # Gemma only sees requests the keyword rules can't handle; it takes ~28 s here, so say so first.
 engine = Engine(con, HybridLLM(LlamaServerLLM(), on_slow=lambda: speak("One moment, sir. Running the calculations.")), hw,
                 finder=Finder(DATA, lambda: grab()))
+engine.defer_laser = True  # the laser lights with the spoken reply (speak), not while it is being synthesised
 voice = None  # loaded in the background: first start downloads ~136 MB of speech models
 busy = threading.Lock()
 
@@ -105,21 +106,65 @@ def open_speaker():
 
 
 speaking = threading.Lock()  # dashboard /api/say and the voice loop must not talk over each other
+spoke_at = 0.0  # when the last reply finished: a wake word right after it is our own voice (BT lags ~1 s)
 
 
-def speak(text):
+@functools.lru_cache(maxsize=128)  # greetings and stock lines play at once instead of after a 2-3 s synth
+def synth(text):
+    return voice.synth(text)[0]
+
+
+def sentences(text):
+    return [s for s in re.split(r"(?<=[.?!])\s+", text.strip()) if s]
+
+
+def laser(on):
+    try:
+        hw.laser(on, 10 if on else 0)  # still capped at 10 s in hardware.py and the sketch
+    except Exception as e:
+        print("[bridge]", e)
+
+
+def speak(text, aim=False):
+    """Sentence by sentence: the next one is synthesised while this one plays, and each sentence is
+    cached, so "Anything else?" and other stock lines cost nothing after the first time.
+    aim: the engine pointed at a tool; the laser is lit from the first word to the end of the reply."""
     print("JARVIS>", text)
     if voice is None:
+        if aim:
+            laser(True)
         return
     try:
         with speaking, open_speaker() as sp:  # open first: no speaker -> skip the ~2 s synth, mic opens at once
-            audio, t = voice.synth(text)
+            t0 = time.time()
+            parts = sentences(text)
+            nxt = [None]
+            def ahead(i):
+                nxt[0] = synth(parts[i])
+            audio = synth(parts[0])
+            t = time.time() - t0  # wait before the first word
             ring("speaking")
-            sp.play_pcm(audio)
+            if aim:
+                laser(True)
+            total = 0
+            for i in range(len(parts)):
+                th = threading.Thread(target=ahead, args=(i + 1,)) if i + 1 < len(parts) else None
+                if th:
+                    th.start()
+                sp.play_pcm(audio)
+                total += len(audio)
+                if th:
+                    th.join()
+                    audio = nxt[0]
             time.sleep(0.5)  # play_pcm returns ~0.2 s early and BT adds latency: let the tail finish before the mic opens
-        print(f"[timing] tts={t:.2f}s audio={len(audio) / voice.tts_rate:.1f}s")
+        print(f"[timing] tts={t:.2f}s audio={total / voice.tts_rate:.1f}s")
     except Exception as e:
         print("[speaker]", e)
+    finally:
+        global spoke_at
+        spoke_at = time.time()
+        if aim:
+            laser(False)
 
 
 def listen():
@@ -132,6 +177,8 @@ def listen():
     rec = time.time() - t0
     ring("thinking")
     text, t = voice.transcribe(pcm)
+    if text:  # words were heard: fill the gap while the reply is worked out and synthesised (not on noise)
+        threading.Thread(target=speak, args=(engine._say("filler"),), daemon=True).start()
     print(f"[timing] rec={rec:.1f}s stt={t:.2f}s peak={int(abs(pcm).max())} heard={text!r}")  # peak: 0..32767, near 0 = silence
     return text
 
@@ -139,6 +186,10 @@ def listen():
 def conversation():
     """One wake-up: greet, then keep going (requests, yes/no answers, "anything else?") until the person
     says they're done, goes quiet after a follow-up, or 5 turns pass."""
+    print(f"[wake] {time.strftime('%T')}")  # compare with the greeting's "Starting speaker" time
+    if speaking.locked() or time.time() - spoke_at < 1.5:  # our own voice through the speaker, not a person
+        print("[wake] ignored: JARVIS was talking")
+        return
     if voice is None or not busy.acquire(blocking=False):
         return
     try:
@@ -157,8 +208,9 @@ def conversation():
             if engine.last_intent in ("THANKS", "BYE"):
                 speak(reply)
                 break
-            follow_up = not (engine.pending or engine.asking_task)  # a question of ours is its own follow-up
-            speak(reply + (" " + engine._say("anything_else") if follow_up else ""))
+            # a question of ours ("shall I log it?", "what's the job?", "say it again?") is its own follow-up
+            follow_up = not (engine.pending or engine.asking_task or engine.last_intent in ("UNKNOWN", "WAKE"))
+            speak(reply + (" " + engine._say("anything_else") if follow_up else ""), engine.take_laser())
     except Exception as e:
         print("[conversation]", e)
         ring("error")
@@ -174,6 +226,19 @@ def load_voice():
         t0 = time.time()
         voice = Voice(f"{DATA}/models")
         print(f"[voice] ready in {time.time() - t0:.1f}s")
+        from jarvis.dialogue import BANK
+        t0 = time.time()
+        for part in ("morning", "afternoon", "evening"):  # every greeting, so a wake-up never waits for synth
+            for line in BANK["wake"]:
+                for s in sentences(line.format(part=part, name=engine.coordinator)):
+                    synth(s)
+        for key in ("filler", "anything_else", "unclear", "ask_task", "ready"):
+            for line in BANK[key]:
+                for s in sentences(line):
+                    synth(s)
+        synth("One moment, sir.")
+        synth("Running the calculations.")
+        print(f"[voice] greetings cached in {time.time() - t0:.1f}s")
     except Exception as e:
         print("[voice] disabled:", e)
 
@@ -188,7 +253,7 @@ def api_confirm(yes: int = 0):
 
 def api_say(text: str = ""):
     reply = engine.handle(text)
-    threading.Thread(target=speak, args=(reply,), daemon=True).start()
+    threading.Thread(target=speak, args=(reply, engine.take_laser()), daemon=True).start()
     return {"reply": reply}
 
 

@@ -76,6 +76,14 @@ def test_find_tool_points_laser(con):
     assert kinds == ["point", "laser"] and hw.calls[1][2] <= 10
 
 
+def test_deferred_laser_waits_for_the_spoken_reply(con):
+    e, hw = make(con, {"where's the wire stripper": {"intent": "FIND_TOOL", "item": "wire stripper"}})
+    e.defer_laser = True
+    e.handle("Where's the wire stripper")
+    assert [c[0] for c in hw.calls] == ["point"]      # aimed, not lit
+    assert e.take_laser() and not e.take_laser()      # main.py lights it once, with the reply
+
+
 def test_find_component_lights_box(con):
     e, hw = make(con, {"where are the esp32s": {"intent": "FIND_COMPONENT", "item": "ESP32"}})
     reply = e.handle("Where are the ESP32s")
@@ -163,6 +171,7 @@ def test_who_has(con):
 def test_small_talk_is_answered_in_code(con):
     e, hw = make(con, {"thanks where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}})
     e.handle("Thank you.");            assert e.last_intent == "THANKS"
+    e.handle("Yes, thank you.");       assert e.last_intent == "THANKS"
     e.handle("No, that's all.");       assert e.last_intent == "BYE"
     assert "JARVIS" in e.handle("Who are you?")
     assert hw.calls == []
@@ -179,6 +188,11 @@ def test_asks_for_the_job_then_points_at_the_tool(con):
     assert not e.asking_task
 
 
+def test_tool_off_the_wall_never_fires_the_laser(con):
+    e, hw = make(con, {"where is the soldering iron": {"intent": "FIND_TOOL", "item": "soldering iron"}})
+    assert "wall" in e.handle("Where is the soldering iron?") and hw.calls == []
+
+
 def test_wake_greeting_matches_time_of_day(con):
     e, hw = make(con, {})
     assert "Good morning" in e.greet(hour=8)
@@ -193,22 +207,26 @@ def test_keyword_baseline_basics(con):
     assert keyword_parse("lend two esp32s to Arjun till Friday", items)["borrower"] == "Arjun"
     assert keyword_parse("which tool should I use to measure diameter", items)["item"] == "vernier caliper"
     assert keyword_parse("I need a tool to check continuity", items)["item"] == "multimeter"
+    assert keyword_parse("I want to measure the size of this groove", items)["item"] == "vernier caliper"
+    assert keyword_parse("Point me to the fire stripper", items)["intent"] == "FIND_TOOL"
 
 
 def test_hybrid_asks_gemma_only_when_rules_give_up_on_a_known_item(con):
     items, asked = db.all_items(con), []
-    gemma = ScriptedLLM({"show me the tweezers": {"intent": "FIND_TOOL", "item": "tweezers"}})
+    gemma = ScriptedLLM({"got any tweezers": {"intent": "FIND_TOOL", "item": "tweezers"}})
     h = HybridLLM(gemma, on_slow=lambda: asked.append(1))
     ask = lambda t: h.parse(t, candidates(t, items))
     assert ask("where's the wire stripper")["intent"] == "FIND_TOOL" and not asked  # rules handle it
     assert ask("what's the weather")["intent"] == "UNKNOWN" and not asked          # small talk: no model
-    assert ask("show me the tweezers")["item"] == "tweezers" and asked == [1]
+    assert ask("got any tweezers")["item"] == "tweezers" and asked == [1]
 
 
 def test_wake_word_is_stripped_before_parsing(con):
     e, hw = make(con, {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}})
     e.handle("Hey Aradino, hey Aradino.")       # only the wake word: must not light the Arduino Uno box
-    assert e.last_intent == "UNKNOWN" and hw.calls == []
+    assert e.last_intent == "WAKE" and hw.calls == []
+    e.handle("Hey, Elvis.")                     # whisper's "Hey Jarvis": answered, never parsed
+    assert e.last_intent == "WAKE" and hw.calls == []
     assert "multimeter" in e.handle("Hey Arduino, where is the multimeter?")
 
 
@@ -228,8 +246,8 @@ def test_camera_finder_moved_missing_and_fallback(con):
     e.rng = type("First", (), {"choice": staticmethod(lambda lines: lines[0])})()  # first line of each set
     e.finder = lambda name: 80                     # seen on its own hook
     assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 80, 75)
-    e.finder = lambda name: 107                    # hung near hook 6 (pan 108) instead
-    assert "hook 6" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 107, 75)
+    e.finder = lambda name: 51                     # hung on the stripper's hook (50) instead
+    assert "hook 1" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 51, 75)
     hw.calls.clear()
     e.finder = lambda name: None                   # not on the wall, not on loan
     reply = e.handle("Where is the multimeter?")

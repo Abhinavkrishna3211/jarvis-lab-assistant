@@ -57,11 +57,13 @@ BANK = {
     "error": ["My apologies, sir. Something went wrong on my side. Please try again in a moment.",
               "Something has gone wrong in my circuits, sir. Please try again shortly."],
     "thanks": ["Always a pleasure, sir.", "Happy to help, sir.", "For you, sir, anytime."],
+    "filler": ["Right, sir.", "Let me see.", "Very good, sir.", "One moment."],  # played while whisper runs
     "anything_else": ["Anything else?", "Will there be anything else?",  # no "sir": the reply before has one
                       "Is there anything else I can do for you?"],
     "goodbye": ["Very well, sir. I'll be here if you need me.", "Of course. Just say the word if you need me.",
                 "Very good, sir. Standing by."],
     "whoami": ["I'm JARVIS, sir, the lab's assistant. I find tools, track parts and keep the loans in order."],
+    "ready": ["Yes, sir?", "I'm listening, sir.", "At your service, sir."],  # "Hey Jarvis" heard on its own
     "how": ["All systems are running smoothly, sir. Thank you for asking.",
             "Fully operational, sir. And yourself?"],
     "ask_task": ["Of course, sir. What's the job?", "Certainly, sir. What do you need to do?"],

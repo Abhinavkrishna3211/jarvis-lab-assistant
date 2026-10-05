@@ -18,16 +18,18 @@ CREATE TABLE IF NOT EXISTS events(
 """
 
 # Hooks sit in ONE column; the single servo swings the laser up and down (lower angle = higher dot).
-# H1-H3 were jogged by eye on the bench wall (docs/measurements.md); H4-H9 are still placeholders.
+# The wall has three hooks, jogged by eye. H4-H9 have no angle: those tools are in the lab but not on
+# the wall, so JARVIS says so instead of firing the laser.
 TILT_FIXED = 75
-HOOK_ANGLES = [50, 65, 79] + [60 + 8 * i for i in range(4, 10)]
+HOOK_ANGLES = [50, 65, 79] + [None] * 6
 SEED_LOCATIONS = [(f"H{i}", "hook", a, TILT_FIXED, None) for i, a in enumerate(HOOK_ANGLES, 1)] + \
                  [(f"B{i}", "box", None, None, i - 1) for i in range(1, 9)]
 SEED_ITEMS = [
     # name, aliases, uses, kind, location, qty, low_stock_at
-    ("wire stripper", "stripper,wire strippers", "strip insulation from wire", "tool", "H1", 1, 0),
+    ("wire stripper", "stripper,wire strippers", "strip insulation from wire,cut wire,wire cutting", "tool", "H1", 1, 0),
     ("vernier caliper", "vernier,caliper,calliper,vernier calliper,verniers",
-     "measure thickness,measure diameter,measure length,measure width", "tool", "H2", 1, 0),
+     "measure thickness,measure diameter,measure length,measure width,measure size,measure groove,"
+     "measure depth,measure gap,measure hole", "tool", "H2", 1, 0),
     ("multimeter", "meter,dmm", "measure voltage,check continuity,measure resistance", "tool", "H3", 1, 0),
     ("soldering iron", "iron,solder iron", "solder joints,join wires,desolder", "tool", "H4", 1, 0),
     ("screwdriver set", "screwdriver,screwdrivers", "tighten screws,open cases", "tool", "H5", 1, 0),

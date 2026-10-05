@@ -86,7 +86,8 @@ class ScriptedLLM:
 
 # ---------------------------------------------------------------- keyword baseline
 _NAME = r"([A-Z][a-z]+)"
-_TASK_CUE = re.compile(r"\b(need|use|which tool|what tool|something to|something for|how (do|can) i)\b")
+_TASK_CUE = re.compile(r"\b(need|use|which tool|what tool|something to|something for|how (do|can) i"
+                       r"|(want|have|trying|going|got) to)\b")
 _STOP = {"a", "an", "the", "to", "for", "from", "of", "and", "in", "on", "with"}
 
 
@@ -136,7 +137,7 @@ def keyword_parse(transcript, items):
         out["intent"] = "WHO_HAS"
     elif re.search(r"how many|stock|left", tl):
         out["intent"] = "STOCK"
-    elif re.search(r"\bwhere\b", tl) and item:
+    elif re.search(r"\b(where|point|show me|find|locate)\b", tl) and item:
         out["intent"] = "FIND_TOOL" if item["kind"] == "tool" else "FIND_COMPONENT"
     elif _TASK_CUE.search(tl) and _task_tool(tl, items):
         out["intent"], out["item"] = "TOOL_FOR_TASK", _task_tool(tl, items)["name"]

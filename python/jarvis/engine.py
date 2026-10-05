@@ -11,13 +11,15 @@ from .validate import Invalid, validate
 
 YES = re.compile(r"^\s*(yes|yeah|yep|confirm|confirmed|go ahead|do it|log it|please do|affirmative)\b", re.I)
 # Whisper often keeps the wake word ("Hey Aradino, where is..."), and "arduino" then matches the Arduino Uno.
-WAKE = re.compile(r"^(\W*(hey|hi|hay|okay|ok)\W+(jarvis|ar\w*d\w*no)\b)+\W*", re.I)
+# Matched anywhere, with whisper's usual mishearings of "Jarvis" ("Hey, Elvis.").
+WAKE = re.compile(r"\b(hey|hi|hay|okay|ok)\W+(jarvis|jervis|elvis|ar\w*d\w*no)\b\W*", re.I)
 NO = re.compile(r"^\s*(no|nope|cancel|stop|never ?mind|negative|don't)\b", re.I)
 # Small talk, answered in code before any parsing. Only short phrases (<= 6 words), so
 # "thanks, where's the multimeter" still goes to the parser. BYE before THANKS: "no thanks" ends.
 CHAT = [(re.compile(r"^\s*(no|nope|nothing|that's all|that is all|i'm good|i am good|all good|bye|goodbye)\b", re.I),
          "BYE", "goodbye"),
-        (re.compile(r"^\W*(thank you|thanks|cheers)( (so much|very much|jarvis|sir))?\W*$", re.I), "THANKS", "thanks"),
+        (re.compile(r"^\W*((yes|yeah|ok|okay)\W+)?(thank you|thanks|cheers)( (so much|very much|jarvis|sir))?\W*$", re.I),
+         "THANKS", "thanks"),
         (re.compile(r"\b(who are you|what are you|your name)\b", re.I), "CHAT", "whoami"),
         (re.compile(r"\bhow are you\b", re.I), "CHAT", "how"),
         (re.compile(r"^\W*((which|what) tool (should|do|can|shall) i use|i (need|want) (a|some) tool"
@@ -36,12 +38,19 @@ class Engine:
         self.pending = None
         self.last_intent = None  # main.py ends the conversation on THANKS / BYE
         self.asking_task = False  # asked "what's the job?": the next answer is a task, not a new request
+        self.defer_laser = False  # main.py: aim now, but light the laser when the spoken reply starts
+        self.laser_due = False
         self.lock = threading.Lock()  # voice loop and dashboard both call in
         import random
         self.rng = rng or random.Random()
 
     def today(self):
         return self._today or date.today()
+
+    def take_laser(self):
+        """True once after a reply that aimed at a tool: the caller lights the laser while speaking it."""
+        due, self.laser_due = self.laser_due, False
+        return due
 
     def _say(self, key, **kw):
         return dialogue.say(key, self.rng, **kw)
@@ -59,7 +68,10 @@ class Engine:
             return self._handle(transcript)
 
     def _handle(self, transcript):
-        transcript = WAKE.sub("", transcript).strip()
+        transcript = WAKE.sub("", transcript).strip(" ,.!?")
+        if not re.search(r"\w", transcript):  # only the wake word: answer it, never send it to the model
+            self.last_intent = "WAKE"
+            return self._say("ready")
         if self.pending:
             self.last_intent = "CONFIRM"
             return self._confirm(transcript)
@@ -109,6 +121,8 @@ class Engine:
             self.hw.box_led(loc["led_index"], "white")
             return loc
         pan = loc["servo_pan"]
+        if pan is None:  # a hook with no angle: the tool isn't kept on the wall
+            return None
         if self.finder:
             try:
                 pan = self.finder(item["name"])
@@ -117,10 +131,13 @@ class Engine:
             if pan is None:
                 return None
         self.hw.point(pan, loc["servo_tilt"])
-        self.hw.laser(True, 10)
+        if self.defer_laser:
+            self.laser_due = True
+        else:
+            self.hw.laser(True, 10)
         if abs(pan - loc["servo_pan"]) <= HOOK_TOL:
             return loc
-        hooks = self.con.execute("SELECT * FROM locations WHERE type='hook'").fetchall()
+        hooks = self.con.execute("SELECT * FROM locations WHERE type='hook' AND servo_pan IS NOT NULL").fetchall()
         return dict(min(hooks, key=lambda h: abs(h["servo_pan"] - pan)), moved=True)
 
     def _position(self, loc):

@@ -6,4 +6,7 @@ bricks:
   - arduino:llm:
       model: llamacpp:gemma-3-1b-it-Q4_0
   - arduino:web_ui
-  - arduino:keyword_spotting
+  - arduino:keyword_spotting:
+      variables:
+        # our Edge Impulse "Hey Jarvis" model (copy models/hey-jarvis.eim there); remove to go back to "Hey Arduino"
+        EI_KEYWORD_SPOTTING_MODEL: /home/arduino/.arduino-bricks/ei-models/hey-jarvis.eim
