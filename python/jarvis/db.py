@@ -17,23 +17,25 @@ CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY, time TEXT, transcript TEXT, intent TEXT, result TEXT);
 """
 
-# Placeholder calibration: replace servo angles / LED indexes after calibrating in the real lab.
-# Hooks sit in ONE horizontal row at the laser's height, so only the pan servo moves and the tilt
-# servo angle is a single fixed value. Calibrate TILT_FIXED and each hook's pan angle on the wall.
+# Hooks sit in ONE column; the single servo swings the laser up and down (lower angle = higher dot).
+# H1-H3 were jogged by eye on the bench wall (docs/measurements.md); H4-H9 are still placeholders.
 TILT_FIXED = 75
-SEED_LOCATIONS = [(f"H{i}", "hook", 60 + 8 * i, TILT_FIXED, None) for i in range(1, 9)] + \
+HOOK_ANGLES = [50, 65, 79] + [60 + 8 * i for i in range(4, 10)]
+SEED_LOCATIONS = [(f"H{i}", "hook", a, TILT_FIXED, None) for i, a in enumerate(HOOK_ANGLES, 1)] + \
                  [(f"B{i}", "box", None, None, i - 1) for i in range(1, 9)]
 SEED_ITEMS = [
     # name, aliases, uses, kind, location, qty, low_stock_at
     ("wire stripper", "stripper,wire strippers", "strip insulation from wire", "tool", "H1", 1, 0),
-    ("side cutters", "cutters,snips,flush cutters,diagonal cutters",
-     "cut zip ties,cut wire,trim component leads,snip", "tool", "H2", 1, 0),
+    ("vernier caliper", "vernier,caliper,calliper,vernier calliper,verniers",
+     "measure thickness,measure diameter,measure length,measure width", "tool", "H2", 1, 0),
     ("multimeter", "meter,dmm", "measure voltage,check continuity,measure resistance", "tool", "H3", 1, 0),
     ("soldering iron", "iron,solder iron", "solder joints,join wires,desolder", "tool", "H4", 1, 0),
     ("screwdriver set", "screwdriver,screwdrivers", "tighten screws,open cases", "tool", "H5", 1, 0),
     ("tweezers", "tweezer", "pick up small parts,place smd components", "tool", "H6", 1, 0),
     ("hot glue gun", "glue gun", "glue parts,fix things in place", "tool", "H7", 1, 0),
     ("pliers", "needle nose pliers,long nose pliers", "bend wire,hold small parts,grip", "tool", "H8", 1, 0),
+    ("side cutters", "cutters,snips,flush cutters,diagonal cutters",
+     "cut zip ties,cut wire,trim component leads,snip", "tool", "H9", 1, 0),
     ("ESP32", "esp,esp 32,esp32s,esp thirty two,esp32 board", "", "component", "B1", 10, 3),
     ("Arduino Uno", "uno,arduino uno r3,arduino", "", "component", "B2", 6, 2),
     ("Raspberry Pi Pico", "pico,rp2040,pi pico", "", "component", "B3", 5, 2),
@@ -53,11 +55,13 @@ def connect(path=":memory:"):
 
 
 def seed(con):
-    if con.execute("SELECT COUNT(*) FROM items").fetchone()[0]:
-        return
-    con.executemany("INSERT INTO locations VALUES(?,?,?,?,?)", SEED_LOCATIONS)
+    """Sync hooks and items from the lists above on every start, so new angles reach the board's
+    existing database. Loans and events are never touched; items keep their ids."""
+    con.executemany("INSERT OR REPLACE INTO locations VALUES(?,?,?,?,?)", SEED_LOCATIONS)
     con.executemany(
-        "INSERT INTO items(name,aliases,uses,kind,location,qty,low_stock_at) VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO items(name,aliases,uses,kind,location,qty,low_stock_at) VALUES(?,?,?,?,?,?,?) "
+        "ON CONFLICT(name) DO UPDATE SET aliases=excluded.aliases, uses=excluded.uses, kind=excluded.kind, "
+        "location=excluded.location, qty=excluded.qty, low_stock_at=excluded.low_stock_at",
         SEED_ITEMS)
     con.commit()
 

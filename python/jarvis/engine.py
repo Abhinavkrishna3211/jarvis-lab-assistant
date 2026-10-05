@@ -20,6 +20,8 @@ CHAT = [(re.compile(r"^\s*(no|nope|nothing|that's all|that is all|i'm good|i am 
         (re.compile(r"^\W*(thank you|thanks|cheers)( (so much|very much|jarvis|sir))?\W*$", re.I), "THANKS", "thanks"),
         (re.compile(r"\b(who are you|what are you|your name)\b", re.I), "CHAT", "whoami"),
         (re.compile(r"\bhow are you\b", re.I), "CHAT", "how"),
+        (re.compile(r"^\W*((which|what) tool (should|do|can|shall) i use|i (need|want) (a|some) tool"
+                    r"|i have (a|this) (need|job|task))\W*$", re.I), "CHAT", "ask_task"),
         (re.compile(r"^\s*(what can you do|help)\W*$", re.I), "CHAT", "help")]
 
 
@@ -33,6 +35,7 @@ class Engine:
         self._today, self.coordinator = today, coordinator
         self.pending = None
         self.last_intent = None  # main.py ends the conversation on THANKS / BYE
+        self.asking_task = False  # asked "what's the job?": the next answer is a task, not a new request
         self.lock = threading.Lock()  # voice loop and dashboard both call in
         import random
         self.rng = rng or random.Random()
@@ -60,10 +63,14 @@ class Engine:
         if self.pending:
             self.last_intent = "CONFIRM"
             return self._confirm(transcript)
+        if self.asking_task:
+            self.asking_task = False
+            transcript = "I need a tool to " + transcript  # "measure the diameter" -> tool for that task
         intent, reply = "UNKNOWN", None
         for rx, chat_intent, key in CHAT:
             if len(transcript.split()) <= 6 and rx.search(transcript):
                 intent, reply = chat_intent, self._say(key)
+                self.asking_task = key == "ask_task"
                 break
         else:
             intent, reply = self._parse_and_act(transcript)

@@ -86,6 +86,25 @@ class ScriptedLLM:
 
 # ---------------------------------------------------------------- keyword baseline
 _NAME = r"([A-Z][a-z]+)"
+_TASK_CUE = re.compile(r"\b(need|use|which tool|what tool|something to|something for|how (do|can) i)\b")
+_STOP = {"a", "an", "the", "to", "for", "from", "of", "and", "in", "on", "with"}
+
+
+def _task_tool(tl, items):
+    """The tool whose listed use best matches the request ("measure the diameter" -> vernier caliper).
+    A use counts when all its words appear (stems: "measuring" matches "measure"), or at least two do."""
+    said = re.findall(r"[a-z]+", tl)
+    best, best_key = None, (0, 0)
+    for it in items:
+        if it["kind"] != "tool":
+            continue
+        for use in filter(None, (it["uses"] or "").split(",")):
+            words = [w for w in use.split() if w not in _STOP]
+            hit = sum(any(s.startswith(w[:5]) for s in said) for w in words)
+            key = (hit / len(words), hit)
+            if (hit == len(words) or hit >= 2) and key > best_key:
+                best, best_key = it, key
+    return best
 
 
 def keyword_parse(transcript, items):
@@ -119,6 +138,8 @@ def keyword_parse(transcript, items):
         out["intent"] = "STOCK"
     elif re.search(r"\bwhere\b", tl) and item:
         out["intent"] = "FIND_TOOL" if item["kind"] == "tool" else "FIND_COMPONENT"
+    elif _TASK_CUE.search(tl) and _task_tool(tl, items):
+        out["intent"], out["item"] = "TOOL_FOR_TASK", _task_tool(tl, items)["name"]
     elif re.search(r"\bneed|use|cut|measure|solder\b", tl) and item and item["kind"] == "tool":
         out["intent"] = "TOOL_FOR_TASK"
     return out

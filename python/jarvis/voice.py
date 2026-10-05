@@ -11,10 +11,10 @@ import numpy as np
 MODELS = os.environ.get("JARVIS_MODELS", "/app/data/models")
 WHISPER_MODEL = "tiny.en"
 PIPER_VOICE = "en_GB-northern_english_male-medium"  # picked by ear over alan and semaine (they sounded like a villain)
-SLOW = 1.3   # Piper length_scale: <1 brisker, >1 slower
+SLOW = 1.6   # Piper length_scale: <1 brisker, >1 slower
 ECHO = 0.0   # short "voice in the walls" echo gain; above ~0.2 it starts to sound sinister
 RATE = 16000  # whisper wants 16 kHz mono
-PEAK = 24000  # output normalised to this (of 32767); 31000 sounded unclear on the Bluetooth speaker
+PEAK = 16000  # output normalised to this (of 32767); 24000+ distorted on the Bluetooth speakers
 
 
 def until_quiet(chunks, rate=RATE, max_s=6.0, quiet_s=0.8, wait_s=4.0):
@@ -66,7 +66,7 @@ class Voice:
         """text -> (int16 samples at self.tts_rate, seconds)."""
         from piper import SynthesisConfig
         t0 = time.time()
-        cfg = SynthesisConfig(length_scale=SLOW)  # default noise_scale: natural, warm intonation
+        cfg = SynthesisConfig(length_scale=SLOW, noise_w_scale=0.5)  # steadier word timing: calmer, less rushed
         x = np.concatenate([c.audio_int16_array for c in self.tts.synthesize(text, cfg)]).astype(np.float32)
         d = int(0.015 * self.tts_rate)  # 15 ms and 30 ms taps
         y = x.copy()

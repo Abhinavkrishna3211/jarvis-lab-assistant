@@ -76,7 +76,7 @@ Gemma when they give up on a request that mentions a known item. See
 
 ## Step 4: Wire the hardware
 
-See [wiring.md](wiring.md) for the pin table. In short: servos on D5/D6, laser through the MOSFET on D7,
+See [wiring.md](wiring.md) for the pin table. In short: servos on D5/D6, laser through the MOSFET on D3,
 LED strip on D8, status ring on D9, all powered from a separate 5 V supply with a shared ground.
 
 **Laser safety:** the keychain pointer's output power is unmeasured, so it is run current-limited (about 20 mA) and treated as a hazard to eyes. The firmware switches it off after 10 s no matter

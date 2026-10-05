@@ -59,7 +59,8 @@ def grab():
 
 
 def calibrate(lo, hi, step=10):
-    """Sweep the pan servo across the wall, find the laser dot at each angle, fit pixel x -> pan.
+    """Sweep the servo across the wall, find the laser dot at each angle, fit pixel position -> angle.
+    The servo may swing the laser sideways or up and down: the axis the dot moved along most is used.
     lo..hi must only cover the tool wall: the laser is on for about half a second at each stop."""
     import cv2
     from arduino.app_peripherals.camera import Camera
@@ -77,12 +78,14 @@ def calibrate(lo, hi, step=10):
             dot = find_dot(off, on)
             print(f"[calibrate] pan={pan} dot={dot}")
             if dot:
-                samples.append((dot[0], pan))
+                samples.append((dot[0], dot[1], pan))
                 cv2.circle(on, dot, 8, (0, 255, 0), 2)
                 cv2.imwrite(f"{DATA}/cal_{pan}.jpg", on)
     if len(samples) < 3:
         return {"error": f"saw the dot only {len(samples)} times", "samples": samples}
-    cal = fit(samples)
+    xs, ys, _ = zip(*samples)
+    axis = 0 if max(xs) - min(xs) >= max(ys) - min(ys) else 1  # 0: dot moves sideways, 1: up and down
+    cal = dict(fit([(s[axis], s[2]) for s in samples]), axis=axis)
     with open(f"{DATA}/vision.json", "w") as f:
         json.dump(cal, f)
     return dict(cal, samples=samples)
@@ -154,7 +157,7 @@ def conversation():
             if engine.last_intent in ("THANKS", "BYE"):
                 speak(reply)
                 break
-            follow_up = not engine.pending  # a yes/no question is its own follow-up
+            follow_up = not (engine.pending or engine.asking_task)  # a question of ours is its own follow-up
             speak(reply + (" " + engine._say("anything_else") if follow_up else ""))
     except Exception as e:
         print("[conversation]", e)

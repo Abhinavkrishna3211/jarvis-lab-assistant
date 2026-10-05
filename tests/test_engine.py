@@ -170,6 +170,15 @@ def test_small_talk_is_answered_in_code(con):
     assert e.last_intent == "FIND_TOOL"
 
 
+def test_asks_for_the_job_then_points_at_the_tool(con):
+    hw = SimHardware()
+    e = Engine(con, HybridLLM(ScriptedLLM({})), hw, today=TODAY)  # keyword rules, no model
+    e.handle("I have this need.")
+    assert e.asking_task and hw.calls == []
+    assert "vernier" in e.handle("Measure the diameter of a pipe.") and hw.calls[0][0] == "point"
+    assert not e.asking_task
+
+
 def test_wake_greeting_matches_time_of_day(con):
     e, hw = make(con, {})
     assert "Good morning" in e.greet(hour=8)
@@ -182,6 +191,8 @@ def test_keyword_baseline_basics(con):
     assert keyword_parse("where is the wire stripper", items)["intent"] == "FIND_TOOL"
     assert keyword_parse("what's overdue", items)["intent"] == "OVERDUE"
     assert keyword_parse("lend two esp32s to Arjun till Friday", items)["borrower"] == "Arjun"
+    assert keyword_parse("which tool should I use to measure diameter", items)["item"] == "vernier caliper"
+    assert keyword_parse("I need a tool to check continuity", items)["item"] == "multimeter"
 
 
 def test_hybrid_asks_gemma_only_when_rules_give_up_on_a_known_item(con):
@@ -212,11 +223,11 @@ def test_recording_stops_after_speech_then_quiet():
 
 
 def test_camera_finder_moved_missing_and_fallback(con):
-    t = {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}}  # home: hook 3, pan 84
+    t = {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}}  # home: hook 3, angle 79
     e, hw = make(con, t)
     e.rng = type("First", (), {"choice": staticmethod(lambda lines: lines[0])})()  # first line of each set
-    e.finder = lambda name: 85                     # seen on its own hook
-    assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 85, 75)
+    e.finder = lambda name: 80                     # seen on its own hook
+    assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 80, 75)
     e.finder = lambda name: 107                    # hung near hook 6 (pan 108) instead
     assert "hook 6" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 107, 75)
     hw.calls.clear()
@@ -227,6 +238,13 @@ def test_camera_finder_moved_missing_and_fallback(con):
     def broken(name): raise OSError("no camera")
     e.finder = broken                              # camera unplugged: fall back to the home hook
     assert "hook 3" in e.handle("Where is the multimeter?")
+
+
+def test_seed_resyncs_an_existing_database(con):
+    con.execute("UPDATE locations SET servo_pan=1 WHERE id='H2'")
+    db.seed(con)
+    assert db.location(con, "H2")["servo_pan"] == 65 and db.get_item(con, "vernier caliper")["location"] == "H2"
+    assert con.execute("SELECT COUNT(*) FROM items").fetchone()[0] == len(db.SEED_ITEMS)
 
 
 def test_vision_locate_dot_and_calibration():

@@ -1,7 +1,7 @@
 """Camera tool finder: find a tool on the wall by template matching (no training), then turn its pixel
 position into a pan angle using a calibration where the camera watched the laser dot sweep the wall.
 
-One pan servo, so only the horizontal position matters. Templates live in data/tools/<name>.png
+One servo, so only one image axis matters (sideways or up/down, chosen at calibration). Templates live in data/tools/<name>.png
 (cropped once from a photo of the wall); the calibration in data/vision.json."""
 import json
 import os
@@ -64,4 +64,4 @@ class Finder:
         if tpl is None:
             raise FileNotFoundError(f"no template for {name}")
         m = locate(self.grab(), tpl)
-        return None if m is None else pan_for(m[0], cal)
+        return None if m is None else pan_for(m[cal.get("axis", 0)], cal)  # axis 1: servo moves the dot up/down

@@ -64,6 +64,7 @@ BANK = {
     "whoami": ["I'm JARVIS, sir, the lab's assistant. I find tools, track parts and keep the loans in order."],
     "how": ["All systems are running smoothly, sir. Thank you for asking.",
             "Fully operational, sir. And yourself?"],
+    "ask_task": ["Of course, sir. What's the job?", "Certainly, sir. What do you need to do?"],
     "help": ["I can find any tool, light up component boxes, log loans and returns, and tell you what's overdue."],
 }
 
