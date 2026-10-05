@@ -17,12 +17,13 @@ CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY, time TEXT, transcript TEXT, intent TEXT, result TEXT);
 """
 
-# Hooks sit in ONE column; the single servo swings the laser up and down (lower angle = higher dot).
-# The wall has three hooks, jogged by eye. H4-H9 have no angle: those tools are in the lab but not on
-# the wall, so JARVIS says so instead of firing the laser.
-TILT_FIXED = 75
-HOOK_ANGLES = [50, 65, 79] + [None] * 6
-SEED_LOCATIONS = [(f"H{i}", "hook", a, TILT_FIXED, None) for i, a in enumerate(HOOK_ANGLES, 1)] + \
+# (pan, tilt) per hook for the two-servo pan-tilt head: pan D5 swings left/right, tilt D6 up/down
+# (lower tilt = higher dot). The three hooks hang in one column, so pan is the same for all; the tilt values
+# are the angles jogged on the one-servo rig and must be re-jogged once the head is built (POST /api/point).
+# H4-H9 have no angles: those tools are in the lab but not on the wall, so JARVIS says so instead of
+# firing the laser.
+HOOK_ANGLES = [(90, 50), (90, 65), (90, 79)] + [(None, None)] * 6
+SEED_LOCATIONS = [(f"H{i}", "hook", p, t, None) for i, (p, t) in enumerate(HOOK_ANGLES, 1)] + \
                  [(f"B{i}", "box", None, None, i - 1) for i in range(1, 9)]
 SEED_ITEMS = [
     # name, aliases, uses, kind, location, qty, low_stock_at

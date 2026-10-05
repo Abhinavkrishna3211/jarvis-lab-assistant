@@ -2,6 +2,7 @@
 # (102 KB flash, 41 KB RAM). Profiles don't resolve dependencies, so all are listed.
 profiles:
   default:
+    fqbn: arduino:zephyr:unoq
     platforms:
       - platform: arduino:zephyr (1.0.0)
     libraries:

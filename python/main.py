@@ -17,7 +17,7 @@ from jarvis.dashboard import state
 from jarvis.engine import Engine
 from jarvis.hardware import BridgeHardware
 from jarvis.llm import HybridLLM, LlamaServerLLM
-from jarvis.vision import Finder, find_dot, fit
+from jarvis.vision import Finder, hook_fit
 
 DATA = "/app/data"
 # Label inside the keyword model: "JARVIS" in our Edge Impulse model (app.yaml), "hey_arduino" in App Lab's built-in one.
@@ -28,8 +28,9 @@ con = db.connect(f"{DATA}/jarvis.db")
 db.seed(con)
 hw = BridgeHardware()
 # Gemma only sees requests the keyword rules can't handle; it takes ~28 s here, so say so first.
+finder = Finder(DATA, lambda: grab(), f"{DATA}/jarvis-vision.eim")  # our Edge Impulse object-detection model
 engine = Engine(con, HybridLLM(LlamaServerLLM(), on_slow=lambda: speak("One moment, sir. Running the calculations.")), hw,
-                finder=Finder(DATA, lambda: grab()))
+                finder=finder)
 engine.defer_laser = True  # the laser lights with the spoken reply (speak), not while it is being synthesised
 voice = None  # loaded in the background: first start downloads ~136 MB of speech models
 busy = threading.Lock()
@@ -59,37 +60,20 @@ def grab():
         return frames(cam, 8)[-1]
 
 
-def calibrate(lo, hi, step=10):
-    """Sweep the servo across the wall, find the laser dot at each angle, fit pixel position -> angle.
-    The servo may swing the laser sideways or up and down: the axis the dot moved along most is used.
-    lo..hi must only cover the tool wall: the laser is on for about half a second at each stop."""
-    import cv2
-    from arduino.app_peripherals.camera import Camera
-    samples = []
-    with Camera(0) as cam:
-        frames(cam, 8)
-        for pan in range(lo, hi + 1, step):
-            hw.point(pan, db.TILT_FIXED)
-            time.sleep(0.8)
-            off = frames(cam, 2)[-1]
-            hw.laser(True, 1)
-            time.sleep(0.3)
-            on = frames(cam, 2)[-1]
-            hw.laser(False, 0)
-            dot = find_dot(off, on)
-            print(f"[calibrate] pan={pan} dot={dot}")
-            if dot:
-                samples.append((dot[0], dot[1], pan))
-                cv2.circle(on, dot, 8, (0, 255, 0), 2)
-                cv2.imwrite(f"{DATA}/cal_{pan}.jpg", on)
-    if len(samples) < 3:
-        return {"error": f"saw the dot only {len(samples)} times", "samples": samples}
-    xs, ys, _ = zip(*samples)
-    axis = 0 if max(xs) - min(xs) >= max(ys) - min(ys) else 1  # 0: dot moves sideways, 1: up and down
-    cal = dict(fit([(s[axis], s[2]) for s in samples]), axis=axis)
+def calibrate():
+    """Hang every tool on its own hook, then call this: where the camera sees each tool is fitted against the
+    hook angles measured by hand. No laser needed (the camera never saw the laser dot on the white board)."""
+    home = {r["name"]: (r["servo_pan"], r["servo_tilt"]) for r in con.execute(
+        "SELECT items.name, servo_pan, servo_tilt FROM items JOIN locations ON items.location = locations.id "
+        "WHERE locations.type = 'hook' AND servo_pan IS NOT NULL AND servo_tilt IS NOT NULL")}
+    seen = finder.model().detect(grab())
+    try:
+        cal = hook_fit(seen, home)
+    except ValueError as e:
+        return {"error": str(e), "seen": seen}
     with open(f"{DATA}/vision.json", "w") as f:
         json.dump(cal, f)
-    return dict(cal, samples=samples)
+    return dict(cal, seen=seen)
 
 
 def open_speaker():
@@ -262,10 +246,12 @@ def api_talk():
     return {}
 
 
-def api_point(pan: int = 90):
-    """Bench test: move the pan servo only (the laser stays off)."""
-    hw.point(pan, db.TILT_FIXED)
-    return {"pan": pan}
+def api_point(pan: int = 90, tilt: int = 90, laser: int = 0):
+    """Jog the head to find a hook's angles. laser=1 lights the dot (still off after 10 s)."""
+    hw.point(pan, tilt)
+    if laser:
+        hw.laser(True, 10)
+    return {"pan": pan, "tilt": tilt}
 
 
 def api_snap():
@@ -274,8 +260,8 @@ def api_snap():
     return {"saved": f"{DATA}/wall.jpg"}
 
 
-def api_calibrate(lo: int = 40, hi: int = 140):
-    return calibrate(lo, hi)
+def api_calibrate():
+    return calibrate()
 
 
 ui.expose_api("POST", "/api/confirm", api_confirm)

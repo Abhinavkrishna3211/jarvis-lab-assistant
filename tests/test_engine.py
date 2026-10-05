@@ -241,13 +241,13 @@ def test_recording_stops_after_speech_then_quiet():
 
 
 def test_camera_finder_moved_missing_and_fallback(con):
-    t = {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}}  # home: hook 3, angle 79
+    t = {"where is the multimeter": {"intent": "FIND_TOOL", "item": "multimeter"}}  # home: hook 3, (90, 79)
     e, hw = make(con, t)
     e.rng = type("First", (), {"choice": staticmethod(lambda lines: lines[0])})()  # first line of each set
-    e.finder = lambda name: 80                     # seen on its own hook
-    assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 80, 75)
-    e.finder = lambda name: 51                     # hung on the stripper's hook (50) instead
-    assert "hook 1" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 51, 75)
+    e.finder = lambda name: (91, 80)               # seen on its own hook
+    assert "hook 3" in e.handle("Where is the multimeter?") and hw.calls[0] == ("point", 91, 80)
+    e.finder = lambda name: (89, 51)               # hung on the stripper's hook (90, 50) instead
+    assert "hook 1" in e.handle("Where is the multimeter?") and hw.calls[-2] == ("point", 89, 51)
     hw.calls.clear()
     e.finder = lambda name: None                   # not on the wall, not on loan
     reply = e.handle("Where is the multimeter?")
@@ -259,25 +259,37 @@ def test_camera_finder_moved_missing_and_fallback(con):
 
 
 def test_seed_resyncs_an_existing_database(con):
-    con.execute("UPDATE locations SET servo_pan=1 WHERE id='H2'")
+    con.execute("UPDATE locations SET servo_tilt=1 WHERE id='H2'")
     db.seed(con)
-    assert db.location(con, "H2")["servo_pan"] == 65 and db.get_item(con, "vernier caliper")["location"] == "H2"
+    assert db.location(con, "H2")["servo_tilt"] == 65 and db.get_item(con, "vernier caliper")["location"] == "H2"
     assert con.execute("SELECT COUNT(*) FROM items").fetchone()[0] == len(db.SEED_ITEMS)
 
 
-def test_vision_locate_dot_and_calibration():
-    np = pytest.importorskip("numpy")
-    pytest.importorskip("cv2")
-    from jarvis.vision import find_dot, fit, locate, pan_for
-    rng = np.random.default_rng(0)
-    wall = rng.integers(90, 110, (480, 640, 3), dtype=np.uint8)
-    tool = rng.integers(0, 255, (60, 40, 3), dtype=np.uint8)
-    wall[200:260, 300:340] = tool
-    x, y, score = locate(wall, tool)
-    assert abs(x - 320) <= 2 and abs(y - 230) <= 2 and score > 0.9
-    assert locate(rng.integers(90, 110, (480, 640, 3), dtype=np.uint8), tool) is None
-    on = wall.copy(); on[100, 500, 2] = 255
-    assert find_dot(wall, on) == (500, 100) and find_dot(wall, wall) is None
-    cal = fit([(100, 50), (300, 90), (500, 130)])
-    assert abs(pan_for(400, cal) - 110) < 0.01
-    assert pan_for(10_000, cal) == 130             # clamped to where the dot was seen on the wall
+def test_vision_boxes_and_hook_calibration():
+    pytest.importorskip("numpy")
+    from jarvis.vision import aim_for, boxes_to_tools, hook_fit
+    boxes = [{"label": "VERNIER", "value": 0.9, "x": 70, "y": 76, "width": 8, "height": 8},
+             {"label": "VERNIER", "value": 0.6, "x": 10, "y": 10, "width": 8, "height": 8},  # weaker: ignored
+             {"label": "STRIPPER", "value": 0.3, "x": 70, "y": 30, "width": 8, "height": 8},  # unsure: ignored
+             {"label": "MULTIMETER", "value": 0.8, "x": 70, "y": 120, "width": 8, "height": 8}]
+    seen = boxes_to_tools(boxes, sx=4, sy=3)  # 160x160 model input -> 640x480 frame
+    assert set(seen) == {"vernier caliper", "multimeter"} and seen["vernier caliper"][:2] == (296, 240)
+    home = {"wire stripper": (90, 50), "vernier caliper": (90, 65), "multimeter": (90, 79)}
+    cal = hook_fit(seen, home)                       # hooks in one column: only tilt follows the image
+    pan, tilt = aim_for(seen["multimeter"], cal)
+    assert pan == 90 and abs(tilt - 79) < 0.01
+    assert aim_for((296, 10_000), cal) == (90, 79)   # clamped to the calibrated hooks: never off the wall
+    assert aim_for((5_000, 240), cal) == (90, 65)    # sideways in the image: no pan slope from one column
+    with pytest.raises(ValueError):
+        hook_fit({"multimeter": seen["multimeter"]}, {"multimeter": (90, 79)})
+
+
+def test_vision_two_axis_fit_follows_a_grid_of_hooks():
+    pytest.importorskip("numpy")
+    from jarvis.vision import aim_for, hook_fit
+    # camera tilted a little against the head: pan and tilt each depend on both pixel axes
+    true = lambda x, y: (60 + 0.1 * x - 0.02 * y, 40 + 0.015 * x + 0.12 * y)
+    px = {"a": (100, 100), "b": (500, 120), "c": (120, 400), "d": (480, 380)}
+    cal = hook_fit({n: (*p, 0.9) for n, p in px.items()}, {n: true(*p) for n, p in px.items()})
+    got, want = aim_for((300, 250), cal), true(300, 250)  # a tool between the hooks
+    assert all(abs(g - w) < 0.01 for g, w in zip(got, want))

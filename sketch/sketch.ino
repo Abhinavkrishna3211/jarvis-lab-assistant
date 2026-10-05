@@ -5,8 +5,10 @@
 #include <Servo.h>
 #include <Adafruit_NeoPixel.h>
 
-// Pin map: adjust to your wiring (see docs/wiring.md).
-const int PAN_PIN = 5, TILT_PIN = 6, LASER_PIN = 3, STRIP_PIN = 8, RING_PIN = 9;
+// Pin map: adjust to your wiring (see docs/wiring.md and docs/schematic/jarvis.pdf).
+// Laser on D7 (PB2): plain GPIO on TIM8, which no servo or NeoPixel pin uses. D3 shared TIM3 with D6/D8
+// and doubles as the OPAMP2 output.
+const int PAN_PIN = 5, TILT_PIN = 6, LASER_PIN = 7, STRIP_PIN = 8, RING_PIN = 9;
 const int STRIP_LEDS = 8, RING_LEDS = 16;
 const unsigned long LASER_MAX_MS = 10000;  // hard safety limit, enforced here as well
 

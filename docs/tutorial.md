@@ -14,7 +14,7 @@ Numbers quoted here come from [measurements.md](measurements.md).
 | Powered USB-C hub with USB-A ports | The UNO Q has one USB-C port; mic, speaker and power share it | to buy |
 | USB microphone (a USB webcam's mic works) | Voice in | ✅ Arducam camera mic |
 | Speaker: USB, or a Bluetooth speaker (see Step 5) | Voice out | ✅ Bluetooth |
-| SG90 servos × 2 (pan, tilt) | Aim the laser | 1 of 2 |
+| SG90 servos × 2 and a pan-tilt bracket | Aim the laser | 1 of 2 servos |
 | Laser module from a keychain pointer (cells removed), plus a logic-level MOSFET (IRLZ44N) | Marks the hook on the tool wall | ✅ both |
 | WS2812 LED strip | One LED under each component box | to buy |
 | 16-LED NeoPixel ring | Status: idle, listening, thinking, speaking, error | ✅ |
@@ -76,12 +76,16 @@ Gemma when they give up on a request that mentions a known item. See
 
 ## Step 4: Wire the hardware
 
-See [wiring.md](wiring.md) for the pin table. In short: servos on D5/D6, laser through the MOSFET on D3,
+See [wiring.md](wiring.md) for the pin table. In short: servos on D5/D6, laser through the MOSFET on D7,
 LED strip on D8, status ring on D9, all powered from a separate 5 V supply with a shared ground.
 
 **Laser safety:** the keychain pointer's output power is unmeasured, so it is run current-limited (about 20 mA) and treated as a hazard to eyes. The firmware switches it off after 10 s no matter
 what Python asks for, and Python caps the request at 10 s too. Mount the turret so it can only reach
 the tool wall, never head height.
+
+**Pan-tilt head and calibration:** build the head and calibrate it as in [wiring.md](wiring.md)
+(Pan-tilt head, then Calibrating hooks): jog each hook's angles with `/api/point`, then let the camera fit
+pixels to angles with `/api/calibrate`.
 
 The firmware compiles as-is for the UNO Q: 12% of flash, 15% of RAM. App Lab flashes it when you press Run.
 
@@ -112,19 +116,19 @@ Bluetooth sink by itself when no USB speaker is plugged in. Bluetooth shares the
 also ran `nmcli connection modify <wifi> connection.autoconnect-retries 0` so the board keeps reconnecting.
 
 - Dashboard: `http://<board-ip>:7000`. Stock, open loans, tap-to-confirm, a text box, and a Talk button.
-- Wake word: say **"Hey Arduino"** (App Lab's built-in model) until you train "Hey Jarvis" (Step 7).
+- Wake word: say **"Hey Jarvis"** (our Edge Impulse model, Step 7), or "Hey Arduino" with App Lab's built-in one.
 
 ## Step 6: Talk to it
 
 ```
-You:    Hey Arduino
+You:    Hey Jarvis
 JARVIS: Good afternoon, sir. How may I help?
 You:    Where is the multimeter?
 JARVIS: The multimeter is on hook 3, sir. I've highlighted it for you. Anything else?   (laser, off after 10 s)
 You:    No, thank you.
 JARVIS: Very well, sir. I'll be here if you need me.
 
-You:    Hey Arduino
+You:    Hey Jarvis
 JARVIS: Good evening, sir. The lab is at your disposal.
 You:    Lend two ESP32s to Arjun till Friday.
 JARVIS: Lending 2 ESP32 to Arjun until Friday 9 October. Shall I log it?
@@ -134,16 +138,17 @@ JARVIS: Logged. I'll keep an eye on its return.
 
 Nothing is saved until you say yes (or tap **Yes, log it** on the dashboard).
 
-## Step 7: Train "Hey Jarvis" (not yet done)
+## Step 7: Train "Hey Jarvis"
 
 Uses App Lab's Edge Impulse integration: record the wake word in many voices plus lab noise, train a
-keyword model, install it from the Keyword Spotting brick's AI models tab, then set the environment
-variable `JARVIS_WAKE_WORD=hey_jarvis`.
+keyword model (ours: MFE plus a small classifier, classes JARVIS and NOISE), save it as `models/hey-jarvis.eim`
+and point `app.yaml` at it. Ours only knows JARVIS and NOISE, so other speech can wake it; an "other
+speech" class is the next retrain.
 
 ## Step 8: Your lab's inventory (not yet done)
 
-Replace the placeholder items, hook angles and LED indexes in `python/jarvis/db.py`. To calibrate each hook,
-jog the servos until the dot sits on it and store the angles.
+Replace the placeholder items, hook angles and LED indexes in `python/jarvis/db.py`. Calibrate each hook as in
+[wiring.md](wiring.md) (Calibrating hooks).
 
 ## Try it on a laptop first
 

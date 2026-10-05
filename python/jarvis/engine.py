@@ -1,5 +1,6 @@
 """Request pipeline: transcript -> candidates -> LLM JSON -> validation -> action -> spoken reply.
 Loans and returns always need a spoken yes (or a tap) before anything is written."""
+import math
 import re
 import threading
 from datetime import date, datetime
@@ -27,7 +28,7 @@ CHAT = [(re.compile(r"^\s*(no|nope|nothing|that's all|that is all|i'm good|i am 
         (re.compile(r"^\s*(what can you do|help)\W*$", re.I), "CHAT", "help")]
 
 
-HOOK_TOL = 4  # degrees: a tool seen within this of its hook's pan angle is on its hook
+HOOK_TOL = 4  # degrees: a tool seen within this of its hook's (pan, tilt) is on its hook
 
 
 class Engine:
@@ -120,25 +121,28 @@ class Engine:
         if loc["type"] != "hook":
             self.hw.box_led(loc["led_index"], "white")
             return loc
-        pan = loc["servo_pan"]
-        if pan is None:  # a hook with no angle: the tool isn't kept on the wall
+        home = (loc["servo_pan"], loc["servo_tilt"])
+        if None in home:  # a hook with no angles: the tool isn't kept on the wall
             return None
+        aim = home
         if self.finder:
             try:
-                pan = self.finder(item["name"])
-            except Exception as e:  # no camera, template or calibration yet: trust the home hook
+                aim = self.finder(item["name"])
+            except Exception as e:  # no camera, model or calibration yet: trust the home hook
                 print("[vision]", e)
-            if pan is None:
+            if aim is None:
                 return None
-        self.hw.point(pan, loc["servo_tilt"])
+        self.hw.point(*aim)
         if self.defer_laser:
             self.laser_due = True
         else:
             self.hw.laser(True, 10)
-        if abs(pan - loc["servo_pan"]) <= HOOK_TOL:
+        off = lambda h: math.dist(aim, (h["servo_pan"], h["servo_tilt"]))
+        if off(loc) <= HOOK_TOL:
             return loc
-        hooks = self.con.execute("SELECT * FROM locations WHERE type='hook' AND servo_pan IS NOT NULL").fetchall()
-        return dict(min(hooks, key=lambda h: abs(h["servo_pan"] - pan)), moved=True)
+        hooks = self.con.execute("SELECT * FROM locations WHERE type='hook' AND servo_pan IS NOT NULL "
+                                 "AND servo_tilt IS NOT NULL").fetchall()
+        return dict(min(hooks, key=off), moved=True)
 
     def _position(self, loc):
         return f"hook {loc['id'][1:]}" if loc["type"] == "hook" else f"box {loc['id'][1:]}"

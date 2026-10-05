@@ -81,7 +81,7 @@ Hook angles and LED indexes in `python/jarvis/db.py` are placeholders until you 
 ## Safety and privacy
 
 - Laser: a small keychain red pointer module, driven well below its rated current, auto-off after 10 s (enforced in both Python and firmware), aimed only at the wall. Its optical power was not measured with an instrument, so the post reports it as an unverified low-power pointer.
-- Camera (stretch goal) faces the tool wall and boxes, never people.
+- Camera faces the tool wall and boxes, never people. It only looks for tools (our Edge Impulse model).
 - The loan log stores first names only and never leaves the board.
 
 ## Evaluation
