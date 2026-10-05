@@ -101,3 +101,9 @@ Spoken tests with real people are still to do. All measured numbers, and how eac
 ## License
 
 MIT
+
+---
+
+*Last commit: 6 Oct 2026, 00:37 IST. After the submission, the code was polished and improved, and a proper
+schematic was added ([docs/schematic/jarvis.pdf](docs/schematic/jarvis.pdf)), which had been left out of
+the earlier commits.*
