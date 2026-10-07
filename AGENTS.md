@@ -1,7 +1,6 @@
 # Project guide for contributors and coding agents
 
-JARVIS is an offline voice assistant on an Arduino UNO Q for an IoT-club lab (DEV Hacktoberfest 2026,
-"Build for a Friend"). Deadline: Mon 5 Oct 2026, 12:29 PM IST. Read `README.md` first.
+JARVIS is an offline voice assistant on an Arduino UNO Q for an IoT-club lab. Read `README.md` first.
 
 ## Commands
 - Tests: `python -m pytest -q` (must stay green; CI runs them)

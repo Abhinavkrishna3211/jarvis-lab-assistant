@@ -102,8 +102,19 @@ Spoken tests with real people are still to do. All measured numbers, and how eac
 
 MIT
 
----
+## Changes after the submission deadline
 
-*Last commit: 6 Oct 2026, 00:37 IST. After the submission, the code was polished and improved, and a proper
-schematic was added ([docs/schematic/jarvis.pdf](docs/schematic/jarvis.pdf)), which had been left out of
-the earlier commits.*
+The deadline was 5 Oct 2026, 12:29 PM IST. The submitted version is commit `d8290db` (pushed 5 Oct 2026,
+12:24 PM IST). After the submission the code was polished and improved, and a proper schematic was added
+([docs/schematic/jarvis.pdf](docs/schematic/jarvis.pdf)), which had been left out of the earlier commits.
+These commits were made after the deadline:
+
+| Commit | Time (IST) | Change |
+|---|---|---|
+| `bb17d30` | 6 Oct 2026, 00:34 | Two-servo pan-tilt head with camera aiming, laser moved to D7, KiCad schematic |
+| `aa3d326` | 6 Oct 2026, 00:36 | Wiring guide for the pan-tilt head; README edit |
+| `9af7c13` | 6 Oct 2026, 00:37 | First version of this note |
+| last commit | 7 Oct 2026, 16:18 | This list; AGENTS.md intro edit |
+
+On 6 Oct the branch was force-pushed by mistake (00:38 and 00:42 IST); on 7 Oct 2026, 16:18 IST it was restored, so every
+commit up to `d8290db` is exactly as submitted.
